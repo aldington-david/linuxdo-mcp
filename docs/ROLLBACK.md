@@ -1,5 +1,13 @@
 # 回滚与停用
 
+## 0.5.0 管理脚本的停用
+
+在 LinuxDo.cmd 中选“停止 ChatGPT 通道”，只停止本地 linuxdo-personal runtime；不删除远程 Tunnel 或 ChatGPT 插件。若启用了登录自启，再选“关闭登录后自启”，只移除本脚本对应的当前用户启动快捷方式。
+
+加密运行密钥在用户目录 `.cache/linuxdo-mcp/manager/tunnel-key.xml`，删除后下次需重新输入；要撤销凭证本身，应在 Platform 撤销对应 key。此操作不影响 Codex stdio。
+
+每次安装备份位于 `.cache/linuxdo-mcp/manager/backups/`。若回退插件，只恢复本插件并重新安装，不能整份覆盖 Codex 或 marketplace 配置。Cookie 已可能轮换，不恢复旧 token；新增 validated_at 字段可以被旧版忽略。
+
 ## 0.4.0 本机安装的回滚
 
 本次后续安装已创建 personal marketplace、启用插件，并配置了私有 Tunnel。先停止对应 Tunnel 并禁用/卸载 `linuxdo-mcp@personal`；如移除 marketplace 条目，只移除此插件，不要覆盖后续其他条目。Python 运行环境与源代码目录分离，删除环境前先确认没有客户端使用。

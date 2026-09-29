@@ -101,7 +101,7 @@ class CoreTests(unittest.TestCase):
     def test_cross_process_rotation_and_abandoned_lock(self):
         context = multiprocessing.get_context("spawn")
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"):
-            cookies._write_cache("_t=0")
+            cookies._write_cache("_t=0", validated_at=time.time())
             (Path(tmp) / "website-token.txt").write_text("0")
             start, results = context.Barrier(3), context.Queue()
             workers = [context.Process(target=concurrent_request, args=(tmp, start, results)) for _ in range(2)]
@@ -158,6 +158,7 @@ class CoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
              patch.dict(os.environ, {"LINUXDO_COOKIE": "_t=bootstrap", "LINUXDO_READ_BROWSER": "0"}), \
              patch.object(server.creq, "get") as get:
+            cookies._write_cache("_t=bootstrap", validated_at=time.time())
             get.return_value = SimpleNamespace(status_code=200, text='{"ok": true}', cookies={"_t": "rotated"})
             self.assertEqual(server._fetch("/test.json"), {"ok": True})
             self.assertEqual(get.call_args.kwargs["headers"]["Cookie"], "_t=bootstrap")
@@ -175,7 +176,7 @@ class CoreTests(unittest.TestCase):
             get.return_value.status_code = 404
             with self.assertRaisesRegex(ToolError, "未识别登录 Cookie"):
                 server._fetch("/session/current.json")
-            self.assertTrue(cookies.CACHE.exists())
+            self.assertFalse(cookies.CACHE.exists())
             get.return_value.status_code = 401
             with self.assertRaises(ToolError):
                 server._fetch("/test.json")
@@ -195,6 +196,36 @@ class CoreTests(unittest.TestCase):
         for value in ("_t=abc; other=secret", "_t=abc\r\nInjected: true", "_t="):
             with self.assertRaises(ValueError):
                 cookies._normalize(value)
+
+    def test_validated_cookie_update_and_automatic_login_check(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
+             patch.dict(os.environ, {"LINUXDO_COOKIE": "", "LINUXDO_READ_BROWSER": "0"}), \
+             patch.object(server.creq, "get") as get:
+            cookies._write_cache("_t=old")
+            before = cookies.CACHE.read_bytes()
+            for status, body, code in ((200, '{}', 'expired'), (401, '{}', 'expired'),
+                                       (403, 'Just a moment', 'blocked'), (429, '{}', 'rate_limited')):
+                get.return_value = SimpleNamespace(status_code=status, text=body, cookies={})
+                with self.assertRaises(server.LoginCheckError) as error:
+                    server.configure_cookie('candidate')
+                self.assertEqual(error.exception.code, code)
+                self.assertEqual(cookies.CACHE.read_bytes(), before)
+            get.return_value = SimpleNamespace(status_code=200, text='{"current_user":{"id":1,"username":"reader"}}', cookies={"_t":"rotated"})
+            server.configure_cookie('candidate')
+            self.assertEqual(cookies.get_cookie(), '_t=rotated')
+            self.assertTrue(cookies.recently_validated())
+            cookies._write_cache('_t=old')
+            get.reset_mock()
+            get.side_effect = [get.return_value, SimpleNamespace(status_code=200, text='{"ok":true}', cookies={})]
+            self.assertEqual(server._fetch('/search.json?q=test'), {'ok': True})
+            self.assertTrue(get.call_args_list[0].args[0].endswith('/session/current.json'))
+            self.assertEqual(get.call_args_list[1].kwargs['headers']['Cookie'], '_t=rotated')
+            get.side_effect = None
+            get.return_value = SimpleNamespace(status_code=200, text='{}', cookies={})
+            result = server.check_cookie()
+            self.assertEqual(result['status'], 'expired')
+            self.assertFalse(cookies.CACHE.exists())
+            self.assertEqual(server.check_cookie()['status'], 'missing')
 
     def test_package_excludes_secrets_and_binds_registered_app(self):
         spec = importlib.util.spec_from_file_location("packager", ROOT / "scripts/package_plugin.py")

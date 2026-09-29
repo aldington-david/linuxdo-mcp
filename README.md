@@ -16,6 +16,12 @@ Cookie 保存在本机；查询及读取到的帖子内容会作为工具结果�
 
 ## 开始使用
 
+Windows 用户直接双击仓库根目录的 **[LinuxDo.cmd](LinuxDo.cmd)**，选 **1 一键安装、授权并启动**；只用本机 Codex 时选 9。首次需要的登录和粘贴步骤由脚本逐步提示，日后用同一入口更新 Cookie、检查状态或停止通道。[完整操作说明](docs/MANAGE-WINDOWS.md)
+
+本地 Codex 在加载 stdio MCP 时自动启动进程；ChatGPT 网页需要独立的 Tunnel 客户端，管理脚本会用官方后台管理命令启动它。可在菜单中选择 Windows 登录后自动启动，默认不启用。电脑关机或断网时，ChatGPT 无法调用本机服务。
+
+以下是其他系统或手工维护方式：
+
 在 Windows PowerShell 中进入仓库根目录：
 
 ```powershell
@@ -27,7 +33,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 & $pythonPath -m linuxdo_mcp.server --configure-cookie
 ```
 
-`--configure-cookie` 会隐藏输入，只在本机终端粘贴独立 `_t`，不要发到聊天。配置后检查；脚本会自动启动并关闭 stdio 服务，无需保留服务器终端：
+`--configure-cookie` 会隐藏输入并实际验证登录，成功后才替换缓存；失败保留旧凭证。只在本机终端粘贴独立 `_t`，不要发到聊天。配置后检查；脚本会自动启动并关闭 stdio 服务，无需保留服务器终端：
 
 ```powershell
 & $pythonPath scripts/check_connection.py
@@ -77,7 +83,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.4.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现 UI、OAuth、多账号托管或写入操作。
+本 fork 的 Python 包版本为 `0.5.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网 UI、OAuth、多账号托管或论坛写入操作。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

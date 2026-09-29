@@ -85,24 +85,34 @@ def _normalize(raw):
     return f"{COOKIE_NAME}={quote(token, safe='%')}"
 
 
-def _read_cache():
+def _read_record():
     try:
         d = json.loads(CACHE.read_text(encoding="utf-8"))
         if time.time() - d.get("ts", 0) > _ttl():
-            return ""
-        return _normalize(d.get("cookie"))
+            return {}
+        return {**d, "cookie": _normalize(d.get("cookie"))}
     except (OSError, ValueError, TypeError, AttributeError):
-        return ""
+        return {}
 
 
-def _write_cache(cookie):
+def _read_cache():
+    return _read_record().get("cookie", "")
+
+
+def recently_validated():
+    checked = _read_record().get("validated_at", 0)
+    return isinstance(checked, (int, float)) and 0 <= time.time() - checked < 300
+
+
+def _write_cache(cookie, validated_at=0):
     temporary = None
     try:
         CACHE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=CACHE.parent,
                                          prefix=".cookie-", delete=False) as f:
             temporary = pathlib.Path(f.name)
-            json.dump({"cookie": _normalize(cookie), "ts": time.time()}, f)
+            json.dump({"cookie": _normalize(cookie), "ts": time.time(),
+                       "validated_at": validated_at}, f)
         temporary.chmod(0o600)
         os.replace(temporary, CACHE)
     except OSError:
@@ -263,7 +273,7 @@ def get_cookie():
         _write_cache(cookie)
         return cookie
     raise RuntimeError(
-        "未配置登录 cookie。请设置 LINUXDO_COOKIE=_t=... ；"
+        "未配置或登录凭证已过期。请运行 LinuxDo.cmd，选择“更新 Cookie”（或设置 LINUXDO_COOKIE）；"
         "若确实要自动读浏览器，设 LINUXDO_READ_BROWSER=1——"
         "但读主浏览器会与它共用同一登录、可能互相顶下线，"
         "强烈建议改用隐身窗口/独立 profile 登录后取其独立 _t。"
@@ -276,4 +286,4 @@ def absorb_rotation(response):
     if jar:
         token = jar.get(COOKIE_NAME)
         if token:
-            _write_cache(f"{COOKIE_NAME}={token}")
+            _write_cache(f"{COOKIE_NAME}={token}", _read_record().get("validated_at", 0))

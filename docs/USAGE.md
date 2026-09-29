@@ -40,7 +40,7 @@ icacls $cookieDir /inheritance:r /grant:r "*${currentSid}:(OI)(CI)F"
 
 如果指定了 `LINUXDO_CACHE_DIR`，应对实际目录设置权限。同一电脑的多个新版 MCP 进程可共用此缓存。每个请求持有跨进程锁直到轮换或失效处理结束，等锁超过 30 秒会明确报忙；进程退出后系统释放锁。不要在服务运行时删除 `cookie.lock`，也不要让仍在使用的浏览器共用这个独立登录。
 
-凭证优先级为：有效缓存 → `LINUXDO_COOKIE` 环境变量 → 显式开启的浏览器读取。缓存优先是为了继续使用轮换后的新 token。更新失效凭证时用 `--configure-cookie` 覆盖缓存，并重启服务；仅修改环境变量不会覆盖仍有效的缓存。
+凭证优先级为：有效缓存 → `LINUXDO_COOKIE` 环境变量 → 显式开启的浏览器读取。缓存优先是为了继续使用轮换后的新 token。更新失效凭证时可双击根目录 LinuxDo.cmd 选择“更新 Cookie”，或用 `--configure-cookie`；只有身份验证成功才替换缓存，下次请求立即使用新值，无需重启。仅修改环境变量不会覆盖仍有效的缓存。Windows 安装、授权、后台启动和自启见 [统一管理脚本说明](MANAGE-WINDOWS.md)。
 
 自动读取浏览器是可选功能，默认关闭。Windows 不支持自动解密 Chrome 系 Cookie；可手动配置，或在确认使用专用会话后设置 `LINUXDO_READ_BROWSER=1`、`LINUXDO_BROWSER=firefox`。macOS/Linux 的 Chrome profile 用 `LINUXDO_CHROME_PROFILE` 选择。手动配置不需要打开这些选项。
 
