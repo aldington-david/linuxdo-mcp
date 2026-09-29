@@ -1,0 +1,42 @@
+# 回滚与停用
+
+本文只提供按需执行的操作。本次开发没有对用户的 Codex 全局配置、个人 marketplace 或真实 Cookie 做写入，因此没有需要恢复的全局配置备份。
+
+## 停止使用
+
+1. 在运行 MCP 和 tunnel-client 的终端分别 Ctrl+C。
+2. 在 ChatGPT / Codex 中禁用或卸载自己安装的插件。若使用本文的默认 personal marketplace，可按当前 CLI 使用 `codex plugin remove linuxdo-mcp@personal`；其他 marketplace 使用实际名称。
+3. 从个人 marketplace 仅移除该插件条目，保留其他插件；如果从未登记过则无需修改。
+4. 在 Linux.do 中撤销独立登录会话；需要清除本机凭证时，仅删除实际 `LINUXDO_CACHE_DIR` 下的 `cookie.json`（默认用户目录 `.cache/linuxdo-mcp/cookie.json`）。缓存删除不会自动撤销站点会话。
+5. 在 Platform 停用对应真实 Tunnel / 撤销仅为此用途创建的 runtime key。关闭本机终端并不撤销平台密钥。
+
+## 撤销 GitHub 上的本次代码提交
+
+先在仓库执行 `git status`，保存尚未提交的个人修改，再找到本次提交：
+
+```powershell
+git log --oneline --grep='feat: add personal ChatGPT plugin'
+git revert <上一步找到的提交ID>
+git push origin main
+```
+
+这样增加一条撤销提交，不重写远端历史，不影响之后的其他提交。不要用 `reset --hard` 或强制推送代替。
+
+如果撤销后仍需使用上游 stdio 版本，在虚拟环境重新 `pip install .`。上游没有本 fork 的 HTTP 入口和新增防护；先停掉旧进程。
+
+## 从编辑前备份恢复到独立目录
+
+备份是仓库相邻 `linuxdo-mcp-records/20260929/before-plugin.bundle`，基线为 `d4c007aab787fe5d3d2d2f5d52197533fb469a35`。不要覆盖现有工作目录。
+
+```powershell
+git bundle verify ..\linuxdo-mcp-records\20260929\before-plugin.bundle
+git clone ..\linuxdo-mcp-records\20260929\before-plugin.bundle ..\linuxdo-mcp-before-plugin
+```
+
+该 bundle 的 SHA256 在 [操作记录](OPERATIONS.md) 中。备份仅含 Git 历史，不包含凭证、虚拟环境或生成的 ZIP。
+
+## 清理本次开发产物
+
+仓库中的 `.venv/` 与 `dist/` 都是生成物；确认没有进程依赖后可手动删除。官方 tunnel-client 校验用文件在 `%LOCALAPPDATA%\linuxdo-mcp-tools\`，其中 `validation-profile/linuxdo-validation.yaml` 只有全零测试 ID；未注册真实云端 Tunnel。目录若以后被用户用于真实运行，先保留其中真实配置，再决定是否清理。
+
+本次开发中对虚拟环境安装方式的调整（editable 改为普通安装）已记录在 OPERATIONS.md；没有恢复或覆盖任何用户已有环境。

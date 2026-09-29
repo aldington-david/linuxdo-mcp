@@ -1,9 +1,9 @@
 """登录 cookie 的获取与缓存。
 
 优先级：
-1. 环境变量 LINUXDO_COOKIE（显式指定，最高优先级）
-2. 缓存文件 ~/.cache/linuxdo-mcp/cookie.json（未过期时直接用，避免频繁访问钥匙串）
-3. 本机浏览器的 cookie 库（macOS 上 Chrome 系需解 Keychain，首次会弹一次授权框；
+1. 缓存文件 ~/.cache/linuxdo-mcp/cookie.json（优先使用轮换后的凭证）
+2. 环境变量 LINUXDO_COOKIE（仅首次或缓存失效时导入）
+3. 显式开启后的本机浏览器 cookie 库（macOS 上 Chrome 系需解 Keychain，首次会弹一次授权框；
    Firefox 的 cookies.sqlite 未加密，任何平台都不需要授权）
 
 浏览器里的 _t 是 Discourse 的滚动 cookie，只要平时还在用浏览器登录 linux.do，
@@ -20,6 +20,7 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
 import time
 
 COOKIE_NAME = "_t"
@@ -41,26 +42,39 @@ def _normalize(raw):
     raw = (raw or "").strip()
     if not raw:
         return ""
-    return raw if "=" in raw else f"{COOKIE_NAME}={raw}"
+    token = raw[3:] if raw.startswith("_t=") else raw
+    if any(c.isspace() or ord(c) < 32 or ord(c) > 126 or c == ";" for c in token):
+        raise ValueError("请只提供独立 _t 的值，不要提供完整 Cookie 头。")
+    if not token or ("=" in token and not raw.startswith("_t=")):
+        raise ValueError("请提供 _t=值；含等号的 token 需要 _t= 前缀。")
+    return f"{COOKIE_NAME}={token}"
 
 
 def _read_cache():
     try:
-        d = json.loads(CACHE.read_text())
-    except Exception:
+        d = json.loads(CACHE.read_text(encoding="utf-8"))
+        if time.time() - d.get("ts", 0) > _ttl():
+            return ""
+        return _normalize(d.get("cookie"))
+    except (OSError, ValueError, TypeError, AttributeError):
         return ""
-    if time.time() - d.get("ts", 0) > _ttl():
-        return ""
-    return _normalize(d.get("cookie"))
 
 
 def _write_cache(cookie):
+    temporary = None
     try:
-        CACHE.parent.mkdir(parents=True, exist_ok=True)
-        CACHE.write_text(json.dumps({"cookie": cookie, "ts": time.time()}))
-        CACHE.chmod(0o600)
-    except Exception:
-        pass  # 缓存写不进去不影响主流程
+        CACHE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=CACHE.parent,
+                                         prefix=".cookie-", delete=False) as f:
+            temporary = pathlib.Path(f.name)
+            json.dump({"cookie": _normalize(cookie), "ts": time.time()}, f)
+        temporary.chmod(0o600)
+        os.replace(temporary, CACHE)
+    except OSError:
+        raise RuntimeError("无法安全保存 Cookie 缓存，请检查 LINUXDO_CACHE_DIR 的写入权限。") from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def clear_cache():
@@ -223,12 +237,8 @@ def get_cookie():
 
 def absorb_rotation(response):
     """Discourse 会定期轮换 _t。若响应里带回新的 _t，就更新缓存，实现自续期。"""
-    try:
-        jar = getattr(response, "cookies", None)
-        if not jar:
-            return
-        token = jar.get(COOKIE_NAME) if hasattr(jar, "get") else None
+    jar = getattr(response, "cookies", None)
+    if jar:
+        token = jar.get(COOKIE_NAME)
         if token:
             _write_cache(f"{COOKIE_NAME}={token}")
-    except Exception:
-        pass

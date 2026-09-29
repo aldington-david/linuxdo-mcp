@@ -1,0 +1,28 @@
+{
+  "name": "linuxdo-mcp",
+  "version": "0.3.0",
+  "description": "使用个人 Linux.do 账号搜索社区、阅读话题与回复，并保留原帖出处。",
+  "author": {
+    "name": "aldington-david",
+    "url": "https://github.com/aldington-david"
+  },
+  "skills": "./skills/",
+  "repository": "https://github.com/aldington-david/linuxdo-mcp",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Linux.do 阅读助手",
+    "shortDescription": "搜索 L 站讨论，阅读正文与回复，引用原帖来源。",
+    "longDescription": "基于 mrsxs/linuxdo-mcp 的个人只读插件。在本机保存独立登录凭证，通过本机 MCP 或 Secure MCP Tunnel 查询自己有权访问的 Linux.do 内容。",
+    "developerName": "aldington-david",
+    "category": "Productivity",
+    "capabilities": ["Read"],
+    "websiteURL": "https://github.com/aldington-david/linuxdo-mcp",
+    "privacyPolicyURL": "https://github.com/aldington-david/linuxdo-mcp/blob/main/docs/PRIVACY.md",
+    "defaultPrompt": [
+      "去 L 站查一下最近关于 Codex 长上下文的实际体验，阅读正文后附原帖链接。",
+      "阅读这个 Linux.do 话题，区分楼主和回复者的观点。",
+      "看看 Linux.do 本周热门话题，保留完整标题和链接。"
+    ],
+    "brandColor": "#C97C30"
+  }
+}
