@@ -1,0 +1,14 @@
+{
+  "devDependencies": {
+    "wrangler": "4.143.1"
+  },
+  "private": true,
+  "scripts": {
+    "test": "node check.mjs"
+  },
+  "name": "linuxdo-worker-poc",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  }
+}

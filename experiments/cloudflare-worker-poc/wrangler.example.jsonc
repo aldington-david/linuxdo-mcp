@@ -1,0 +1,27 @@
+{
+  "name": "replace-with-a-new-unique-worker-name",
+  "account_id": "replace-with-your-account-id",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-29",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": false
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SESSION",
+        "class_name": "Session"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Session"
+      ]
+    }
+  ]
+}
