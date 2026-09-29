@@ -7,12 +7,16 @@
 ```powershell
 git clone https://github.com/aldington-david/linuxdo-mcp.git
 cd linuxdo-mcp
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install .
+$runtime = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv'
+python -m venv $runtime
+$pythonPath = Join-Path $runtime 'Scripts\python.exe'
+& $pythonPath -m pip install --upgrade pip
+& $pythonPath -m pip install .
 ```
 
-macOS/Linux 把 `python` 换成 `python3`，把 `.\.venv\Scripts\python.exe` 换成 `.venv/bin/python`。本文使用普通安装；改过源码后需要重新 `pip install .`。Windows 中文目录下的某些 Python 3.11 环境可能无法正确加载 editable 安装的 `.pth`，故不建议在这里使用 `pip install -e .`。
+Windows 若仓库路径含中文，建议把虚拟环境放在 `%LOCALAPPDATA%/linuxdo-mcp/venv` 等纯英文路径；实测 curl_cffi 在中文证书文件路径下可能报 curl 77。为该环境安装本项目，打包时传入它的 Python 绝对路径即可，不要关闭证书校验。
+
+macOS/Linux 可以 `python3 -m venv .venv` 后用 `.venv/bin/python` 代替本文的 `& $pythonPath`。本文使用普通安装；改过源码后需要重新 `pip install .`。下文沿用 `$pythonPath`；重开 PowerShell 后先执行 `$pythonPath = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv\Scripts\python.exe'`。Windows 中文目录下的某些 Python 3.11 环境可能无法正确加载 editable 安装的 `.pth`，故不建议在这里使用 `pip install -e .`。
 
 ## 2. 配置独立 Cookie
 
@@ -21,10 +25,10 @@ macOS/Linux 把 `python` 换成 `python3`，把 `.\.venv\Scripts\python.exe` 换
 在本机终端执行：
 
 ```powershell
-.\.venv\Scripts\python.exe -m linuxdo_mcp.server --configure-cookie
+& $pythonPath -m linuxdo_mcp.server --configure-cookie
 ```
 
-隐藏输入支持裸 token 或 `_t=...`，写入后立即退出，不发网络请求。缓存默认在 `%USERPROFILE%\.cache\linuxdo-mcp\cookie.json`，不在仓库或 OneDrive 内。不要把 Cookie 放进聊天、GitHub、插件 ZIP 或共享配置。
+隐藏输入支持裸 token 或 `_t=...`，也支持浏览器展示的解码值；程序会保留已有转义并补齐 Cookie 的 URL 编码。输入不回显，请只粘贴一次后回车；写入后立即退出，不发网络请求。缓存默认在 `%USERPROFILE%\.cache\linuxdo-mcp\cookie.json`，不在仓库或 OneDrive 内。不要把 Cookie 放进聊天、GitHub、插件 ZIP 或共享配置。
 
 此文件是明文凭证。Unix 上使用目录 700 / 文件 600；Windows 的实际访问权限取决于 NTFS ACL，`chmod(600)` 不等于设置 Windows ACL。需要限制为当前 Windows 用户时，可在缓存生成后执行：
 
@@ -34,44 +38,51 @@ $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 icacls $cookieDir /inheritance:r /grant:r "*${currentSid}:(OI)(CI)F"
 ```
 
-如果指定了 `LINUXDO_CACHE_DIR`，应对实际目录设置权限。只运行一个服务进程维护同一缓存；多个客户端可以连接该服务。
+如果指定了 `LINUXDO_CACHE_DIR`，应对实际目录设置权限。同一电脑的多个新版 MCP 进程可共用此缓存。每个请求持有跨进程锁直到轮换或失效处理结束，等锁超过 30 秒会明确报忙；进程退出后系统释放锁。不要在服务运行时删除 `cookie.lock`，也不要让仍在使用的浏览器共用这个独立登录。
 
 凭证优先级为：有效缓存 → `LINUXDO_COOKIE` 环境变量 → 显式开启的浏览器读取。缓存优先是为了继续使用轮换后的新 token。更新失效凭证时用 `--configure-cookie` 覆盖缓存，并重启服务；仅修改环境变量不会覆盖仍有效的缓存。
 
 自动读取浏览器是可选功能，默认关闭。Windows 不支持自动解密 Chrome 系 Cookie；可手动配置，或在确认使用专用会话后设置 `LINUXDO_READ_BROWSER=1`、`LINUXDO_BROWSER=firefox`。macOS/Linux 的 Chrome profile 用 `LINUXDO_CHROME_PROFILE` 选择。手动配置不需要打开这些选项。
 
-## 3. 启动与本机验证
+## 3. Codex 自动启动与本机验证
+
+默认插件使用 stdio。Codex 初始化 MCP 时会启动 Python 子进程，进程随客户端会话管理，无需开服务器终端、监听端口或配置开机任务。先验证已安装的 Python 包：
 
 ```powershell
-.\.venv\Scripts\python.exe -m linuxdo_mcp.server --transport streamable-http
+& $pythonPath scripts/check_connection.py
+& $pythonPath scripts/check_connection.py --live --query 'Codex order:latest'
 ```
 
-默认地址是 `http://127.0.0.1:8787/mcp`。命令行可用 `--port` 改端口，`--host` 仅接受 `127.0.0.1`、`localhost`、`::1`。修改端口后，MCP 配置与 Tunnel 目标地址也要一并修改。保留 SDK 的 Host/Origin 检查。访问浏览器页面不等于完成 MCP 握手，应另开终端运行：
+脚本默认自动启动 stdio 服务。第一条只初始化并发现工具；第二条才会调用 `whoami`、`search`，有结果时再用 `get_topic` 读前三条可见帖子。它不输出 Cookie 或帖子正文。
+
+生成适用于本机的插件包时，将虚拟环境 Python 的绝对路径写入包内配置，避免 Codex 找到另一个 Python：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/check_connection.py
-.\.venv\Scripts\python.exe scripts/check_connection.py --live --query 'Codex order:latest'
+$pythonPath = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv\Scripts\python.exe'
+& $pythonPath scripts/package_plugin.py --python $pythonPath
 ```
 
-无 `--live`：只初始化并发现工具，不读取 Cookie 或帖子。加 `--live`：调用 `whoami`、`search`，有结果时再调用 `get_topic` 读取前三条可见帖子；只输出账号等级、数量和分页位置，不打印帖子正文。搜索无结果时会说明没有验证读帖。
+按第 6 节安装后，新对话会使用插件配置自动启动进程；配置了插件不代表现有对话已加载。不要再额外注册一份同名 HTTP MCP。若移动或删除虚拟环境，需重新打包并安装。Cookie 与插件安装目录分开，更新插件不需要重填仍有效的 Cookie。
 
-默认 stdio 入口仍可用于其他本机 MCP 客户端：
+HTTP 仍保留用于需要它的客户端，但不是默认路径：
 
 ```powershell
-.\.venv\Scripts\python.exe -m linuxdo_mcp.server
+& $pythonPath -m linuxdo_mcp.server --transport streamable-http
+# 另一个终端：
+& $pythonPath scripts/check_connection.py --url http://127.0.0.1:8787/mcp
 ```
 
-它等待 MCP 客户端的 JSON-RPC，不会显示交互菜单。客户端的 `command` 应填写此虚拟环境 Python 的绝对路径，`args` 使用 `["-m", "linuxdo_mcp.server"]`。同一缓存不要同时启动 HTTP 服务和另一个 stdio 服务。
+`--host` 只接受回环地址，`--port` 默认 8787，SDK 的 Host/Origin 检查仍然保留。
 
 ## 4. 连接 Secure MCP Tunnel
 
-ChatGPT 网页不能直接访问你电脑的 `127.0.0.1`。个人使用推荐官方 Secure MCP Tunnel：本机主动建立出站连接，无需开放路由器入站端口。它支持 stdio 和 HTTP，这里统一使用已验证的 HTTP 入口。[官方说明](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+ChatGPT 网页不能直接访问你电脑的 `127.0.0.1`。个人使用推荐官方 Secure MCP Tunnel：本机主动建立出站连接，无需开放路由器入站端口。它支持 stdio 和 HTTP，这里使用与 Codex 相同的 stdio 入口。[官方说明](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
 
 必需条件是：ChatGPT 开发者模式可用；Platform 中能够创建或使用 Tunnel；Tunnel 与目标 ChatGPT workspace 关联；准备运行 Tunnel 的 runtime API key。Platform 的 Tunnel 权限与 ChatGPT 开发者权限分开，不能只凭订阅名称推断账户已经具备这些权限。
 
 1. 在 [Platform Tunnels](https://platform.openai.com/settings/organization/tunnels) 创建 Tunnel 并取得真实 `tunnel_id`。
 2. 从该页面或 [官方最新发行版](https://github.com/openai/tunnel-client/releases/latest) 下载适合系统的 `tunnel-client`，按发布的 SHA256SUMS 核对文件。不要把二进制或 API key 放进仓库。
-3. 在另一个 PowerShell 终端运行下列命令，保持第 3 节 MCP 服务运行。
+3. 在 PowerShell 终端运行下列命令。Tunnel 客户端会启动自己的 stdio MCP，不需要另开 HTTP 服务。
 
 ```powershell
 # 先把 tunnel-client.exe 所在目录加入当前终端 PATH，或用绝对路径调用。
@@ -79,12 +90,16 @@ tunnel-client help quickstart
 $secureKey = Read-Host 'Tunnel runtime API key' -AsSecureString
 $env:CONTROL_PLANE_API_KEY = [Net.NetworkCredential]::new('', $secureKey).Password
 
-tunnel-client init --profile linuxdo --tunnel-id YOUR_TUNNEL_ID --mcp-server-url http://127.0.0.1:8787/mcp --health-listen-addr 127.0.0.1:8788
+$pythonPath = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv\Scripts\python.exe'
+$mcpCommand = '"' + $pythonPath.Replace('\', '/') + '" -m linuxdo_mcp.server'
+tunnel-client init --sample sample_mcp_stdio_local --profile linuxdo --tunnel-id YOUR_TUNNEL_ID --mcp-command $mcpCommand --health-listen-addr 127.0.0.1:8788
 tunnel-client doctor --profile linuxdo --explain
 tunnel-client run --profile linuxdo
 ```
 
 把 `YOUR_TUNNEL_ID` 换成平台给出的 ID。API key 在当前进程环境中，不写到命令历史；不要使用 `setx` 或提交到配置文件。`init` 写入的是 `env:CONTROL_PLANE_API_KEY` 引用。已有同名 profile 时先检查原配置，不要直接加 `--force` 覆盖。
+
+Windows 的 tunnel-client 0.0.15 会把命令里的反斜杠当作转义，因此上面的命令转为正斜杠；其预检还会误把 `-X utf8` 中的 `utf8` 当脚本，所以 Tunnel 使用 `python -m`，如需 UTF-8 则在运行前设置 `PYTHONUTF8=1`。
 
 本地管理页是 `http://127.0.0.1:8788/ui`；`/healthz`、`/readyz` 可辅助诊断。能打开管理页只表示本机进程可访问，还要确认连接就绪。保持 `run` 运行，否则 ChatGPT 工具发现和调用会失败。
 
@@ -108,18 +123,26 @@ tunnel-client run --profile linuxdo
 ChatGPT 注册连接后，从插件页面 URL 复制技术 ID，官方示例以 `plugin_asdk_app` 开头。这不是 Tunnel ID，也不是 API key。[官方打包规范](https://developers.openai.com/plugins/build/plugins)
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID
+& $pythonPath scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID
 ```
 
-生成的 ZIP 包含 `.app.json` 连接映射、Skill 和清单，移除了 localhost MCP 配置。连接 ID 没有写回源码。不要把别人创建的 ID 或测试 ID 当作自己的连接；打包程序只校验格式，无法证明此 ID 在账户中有效。
-
-本机 Codex 使用下面的包，保持 HTTP 服务已启动：
+如果更新的是 ChatGPT 自动创建的现有插件，先在详情页的 More actions → Download plugin ZIP 下载当前包，从其中 `.codex-plugin/plugin.json` 读取 `name`，再保留这个技术名称打包：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/package_plugin.py
+& $pythonPath scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID --plugin-name dev-existing-id
 ```
 
-安装带 Skill 的本地包使用个人 marketplace。若已有个人 marketplace，先备份，再追加条目，不能覆盖原文件。可以在 Codex 使用 `$plugin-creator`，或 ChatGPT Work 使用 `@plugin-creator`，让它把解压后的现有插件登记进个人 marketplace；提供插件目录，明确要求保留现有插件内容。只有 ChatGPT 注册连接的绑定包用于云端 Work；本机包里的 localhost 指执行该插件的本机。
+`dev-existing-id` 要换成下载包里的真实 `name`，不是界面显示名称。随后在原插件详情页选择 More actions → Upload new version，上传生成的 ZIP；这是已实际验证的网页更新入口。若浏览器扩展没有本地文件访问权限，可直接手动选择 ZIP，不必扩大扩展权限。`plugin_asdk_app_...` 会自动转换为连接映射需要的 `asdk_app_...`。
+
+生成的 ZIP 包含 `.app.json` 连接映射、Skill 和清单，移除了本机 stdio MCP 配置。连接 ID 没有写回源码。不要把别人创建的 ID 或测试 ID 当作自己的连接；打包程序只校验格式，无法证明此 ID 在账户中有效。
+
+本机 Codex 使用下面的包，由 Codex 管理 stdio 进程：
+
+```powershell
+& $pythonPath scripts/package_plugin.py --python $pythonPath
+```
+
+安装带 Skill 的本地包使用个人 marketplace。若已有个人 marketplace，先备份，再追加条目，不能覆盖原文件。可以在 Codex 使用 `$plugin-creator`，或 ChatGPT Work 使用 `@plugin-creator`，让它把解压后的现有插件登记进个人 marketplace；提供插件目录，明确要求保留现有插件内容。只有 ChatGPT 注册连接的绑定包用于云端 Work；本机包里的 Python 路径必须在执行插件的电脑上存在。
 
 手动安装的新环境可以按以下结构放置（不要把它直接覆盖到已有配置）：
 
@@ -187,4 +210,4 @@ ChatGPT 注册连接后，从插件页面 URL 复制技术 ID，官方示例以 
 
 升级前先保存自己的修改：`git status` 确认工作区，再 `git pull --ff-only`；运行 `pip install .` 和测试。插件包需要重新生成和安装；更新已安装本机插件时，可用 `$plugin-creator` 的 cachebuster / 重装流程。更新服务器不会自动更新已打包的 Skill。
 
-停用时 Ctrl+C 结束 MCP 与 Tunnel，关闭终端以释放当前环境变量；在 ChatGPT 或 Codex 禁用/移除插件。需要撤销登录时在 Linux.do 的账号会话管理中撤销独立会话，再删除实际缓存目录里的 `cookie.json`；不要删除其他浏览器会话。具体版本回滚见 [ROLLBACK.md](ROLLBACK.md)。
+停用时禁用 Codex 插件并结束其会话；若运行了 Tunnel，则 Ctrl+C 结束它，关闭终端以释放当前环境变量；在 ChatGPT 或 Codex 禁用/移除插件。需要撤销登录时在 Linux.do 的账号会话管理中撤销独立会话，再删除实际缓存目录里的 `cookie.json`；不要删除其他浏览器会话。具体版本回滚见 [ROLLBACK.md](ROLLBACK.md)。

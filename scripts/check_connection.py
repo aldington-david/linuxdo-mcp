@@ -1,12 +1,17 @@
-"""检查运行中的 HTTP MCP；--live 会读取当前账号并实际搜索、读帖。"""
+"""默认自动启动 stdio MCP；--url 检查 HTTP；--live 实际登录、搜索、读帖。"""
 import argparse
 import asyncio
-from mcp import ClientSession
+import os
+import sys
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 
-async def check(url, live=False, query="Codex order:latest"):
-    async with streamable_http_client(url) as streams:
+async def check(url=None, live=False, query="Codex order:latest"):
+    transport = streamable_http_client(url) if url else stdio_client(StdioServerParameters(
+        command=sys.executable, args=["-X", "utf8", "-m", "linuxdo_mcp.server"], env=dict(os.environ)))
+    async with transport as streams:
         async with ClientSession(streams[0], streams[1], read_timeout_seconds=120) as session:
             init = await session.initialize()
             tools = await session.list_tools()
@@ -35,7 +40,7 @@ async def check(url, live=False, query="Codex order:latest"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default="http://127.0.0.1:8787/mcp")
+    parser.add_argument("--url", help="可选 HTTP MCP 地址；不填时由脚本启动 stdio 服务")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--query", default="Codex order:latest")
     args = parser.parse_args()

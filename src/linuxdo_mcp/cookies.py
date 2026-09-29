@@ -16,12 +16,15 @@
     LINUXDO_CHROME_PROFILE 指定 Chrome 系 profile，可填显示名（如 "linuxdo"）
                          或目录名（如 "Profile 1"）；用专用 profile 与主浏览器互不干扰
 """
+from contextlib import contextmanager
+import errno
 import json
 import os
 import pathlib
 import sys
 import tempfile
 import time
+from urllib.parse import quote
 
 COOKIE_NAME = "_t"
 URL = "https://linux.do/"
@@ -29,6 +32,37 @@ CACHE = pathlib.Path(
     os.environ.get("LINUXDO_CACHE_DIR")
     or os.path.expanduser("~/.cache/linuxdo-mcp")
 ) / "cookie.json"
+
+
+@contextmanager
+def locked(timeout=30):
+    """锁住整个凭证请求周期；进程退出后由系统释放，锁文件不能在运行时删除。"""
+    CACHE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(CACHE.with_suffix(".lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, "r+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+            acquire = lambda: msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            release = lambda: msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            acquire = lambda: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            release = lambda: fcntl.flock(lock, fcntl.LOCK_UN)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                acquire()
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("另一个 Linux.do 请求仍在使用登录凭证，请稍后重试。") from None
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            release()
 
 
 def _ttl():
@@ -45,9 +79,10 @@ def _normalize(raw):
     token = raw[3:] if raw.startswith("_t=") else raw
     if any(c.isspace() or ord(c) < 32 or ord(c) > 126 or c == ";" for c in token):
         raise ValueError("请只提供独立 _t 的值，不要提供完整 Cookie 头。")
-    if not token or ("=" in token and not raw.startswith("_t=")):
-        raise ValueError("请提供 _t=值；含等号的 token 需要 _t= 前缀。")
-    return f"{COOKIE_NAME}={token}"
+    if not token:
+        raise ValueError("Cookie 不能为空。")
+    # Rails 的加密 cookie 使用 URL 编码；兼容浏览器展示的解码值，保留已有 % 转义。
+    return f"{COOKIE_NAME}={quote(token, safe='%')}"
 
 
 def _read_cache():

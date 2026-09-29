@@ -7,8 +7,9 @@
 推荐个人使用方式：
 
 ```text
-ChatGPT → Secure MCP Tunnel → 本机 http://127.0.0.1:8787/mcp → Linux.do
-Codex 本机插件 ───────────────→ 同一个本机 MCP
+Codex → 自动启动本机 stdio MCP → Linux.do
+ChatGPT → Secure MCP Tunnel → 本机 stdio MCP → Linux.do
+两个入口共用 Cookie 缓存，由跨进程锁协调轮换。
 ```
 
 Cookie 保存在本机；查询及读取到的帖子内容会作为工具结果传给调用方。HTTP 入口只允许监听回环地址，没有多用户鉴权，不能直接作为公网服务发布。
@@ -18,21 +19,22 @@ Cookie 保存在本机；查询及读取到的帖子内容会作为工具结果�
 在 Windows PowerShell 中进入仓库根目录：
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install .
-.\.venv\Scripts\python.exe -m linuxdo_mcp.server --configure-cookie
-.\.venv\Scripts\python.exe -m linuxdo_mcp.server --transport streamable-http
+$runtime = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv'
+python -m venv $runtime
+$pythonPath = Join-Path $runtime 'Scripts\python.exe'
+& $pythonPath -m pip install --upgrade pip
+& $pythonPath -m pip install .
+& $pythonPath -m linuxdo_mcp.server --configure-cookie
 ```
 
-第四步会隐藏输入，只在本机终端粘贴独立 `_t`，不要发到聊天。服务启动后保持窗口运行。另开终端检查：
+`--configure-cookie` 会隐藏输入，只在本机终端粘贴独立 `_t`，不要发到聊天。配置后检查；脚本会自动启动并关闭 stdio 服务，无需保留服务器终端：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/check_connection.py
-.\.venv\Scripts\python.exe scripts/check_connection.py --live
+& $pythonPath scripts/check_connection.py
+& $pythonPath scripts/check_connection.py --live
 ```
 
-第一条只检查 MCP 握手和工具发现；第二条才会登录、搜索并在有结果时读帖。完整的 Cookie 获取、Tunnel、ChatGPT 安装、Skill 绑定和常见故障见 [使用文档](docs/USAGE.md)。
+安装后的 Codex 插件也会自动启动 stdio 服务。第一条只检查 MCP 握手和工具发现；第二条才会登录、搜索并在有结果时读帖。完整的 Cookie 获取、Tunnel、ChatGPT 安装、Skill 绑定和常见故障见 [使用文档](docs/USAGE.md)。
 
 ## 工具
 
@@ -56,26 +58,26 @@ python -m venv .venv
 - `scripts/package_plugin.py`：按允许列表打包，不包含源码环境、Cookie 或 Git 历史。
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/package_plugin.py
+& $pythonPath scripts/package_plugin.py
 # ChatGPT 注册连接后，用自己的真实技术 ID 生成绑定包：
-.\.venv\Scripts\python.exe scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID
+& $pythonPath scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID
 ```
 
-本机包输出到 `dist/linuxdo-mcp-local.zip`；绑定包为 `dist/linuxdo-mcp-chatgpt.zip`。前者需要同机 MCP 已启动；后者使用注册的 ChatGPT 连接，不会尝试访问 ChatGPT 云端的 localhost。包本身不部署服务器，也不创建 Tunnel。
+本机 Python 不在默认 PATH 时，打包时加 `--python "Python 的绝对路径"`。本机包输出到 `dist/linuxdo-mcp-local.zip`；绑定包为 `dist/linuxdo-mcp-chatgpt.zip`。前者由 Codex 启动指定的 Python；后者使用注册的 ChatGPT 连接。包本身不部署服务器，也不创建 Tunnel。
 
 ## 验证与维护
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m pip wheel --no-deps . --wheel-dir dist
+& $pythonPath -X utf8 -m unittest discover -s tests -v
+& $pythonPath -m pip check
+& $pythonPath -m pip wheel --no-deps . --wheel-dir dist
 ```
 
 测试使用隔离的临时 Cookie 目录和虚拟帖子数据；真实 stdio / HTTP 传输照常启动。测试不会读取浏览器或联系 Linux.do。当前验收边界见 [验证记录](docs/VALIDATION.md)，升级和停用见 [使用文档](docs/USAGE.md)，撤销本次改动见 [回滚文档](docs/ROLLBACK.md)。
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.3.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现 UI、OAuth、多账号托管或写入操作。
+本 fork 的 Python 包版本为 `0.4.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现 UI、OAuth、多账号托管或写入操作。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

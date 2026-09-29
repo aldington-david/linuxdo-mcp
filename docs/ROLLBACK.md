@@ -1,5 +1,13 @@
 # 回滚与停用
 
+## 0.4.0 本机安装的回滚
+
+本次后续安装已创建 personal marketplace、启用插件，并配置了私有 Tunnel。先停止对应 Tunnel 并禁用/卸载 `linuxdo-mcp@personal`；如移除 marketplace 条目，只移除此插件，不要覆盖后续其他条目。Python 运行环境与源代码目录分离，删除环境前先确认没有客户端使用。
+
+立即安装前的配置、Git bundle、缓存目录 ACL、安装日志与详细回滚说明在 `%USERPROFILE%/.codex/installation-records/linuxdo-stdio-20260929-185358/`。不要用旧配置覆盖后来修改；需要撤销凭证时，分别在 Linux.do 和 Platform 撤销，而不只是删本地文件。跨进程锁文件不能在仍有请求运行时删除。
+
+撤销 GitHub 本次更新使用 `git revert` 对应 stdio 更新提交，不强制推送。下面为初始创建时的回滚说明。
+
 本文只提供按需执行的操作。本次开发没有对用户的 Codex 全局配置、个人 marketplace 或真实 Cookie 做写入，因此没有需要恢复的全局配置备份。
 
 ## 停止使用

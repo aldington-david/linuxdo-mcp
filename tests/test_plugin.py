@@ -2,12 +2,14 @@
 import asyncio
 import importlib.util
 import json
+import multiprocessing
 import os
 from pathlib import Path
 import socket
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -66,7 +68,72 @@ def fixture(path):
     raise AssertionError(f"Unexpected fixture request: {path}")
 
 
+def concurrent_request(cache_dir, start, results):
+    cookies.CACHE = Path(cache_dir) / "cookie.json"
+    counter = Path(cache_dir) / "website-token.txt"
+
+    def get(url, **kwargs):
+        token = counter.read_text()
+        if kwargs["headers"]["Cookie"] != "_t=" + token:
+            return SimpleNamespace(status_code=401, text="{}", cookies={})
+        # 模拟网站已轮换而响应仍在路上；无跨进程锁会导致另一进程带旧凭证请求。
+        newer = str(int(token) + 1)
+        counter.write_text(newer)
+        time.sleep(0.2)
+        return SimpleNamespace(status_code=200, text='{"ok":true}', cookies={"_t": newer})
+
+    start.wait(timeout=20)
+    try:
+        with patch.object(server.creq, "get", side_effect=get):
+            results.put(server._fetch("/test.json"))
+    except Exception as error:
+        results.put({"error": str(error)})
+
+
+def hold_cookie_lock(cache_dir, ready):
+    cookies.CACHE = Path(cache_dir) / "cookie.json"
+    with cookies.locked():
+        ready.set()
+        time.sleep(60)
+
+
 class CoreTests(unittest.TestCase):
+    def test_cross_process_rotation_and_abandoned_lock(self):
+        context = multiprocessing.get_context("spawn")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"):
+            cookies._write_cache("_t=0")
+            (Path(tmp) / "website-token.txt").write_text("0")
+            start, results = context.Barrier(3), context.Queue()
+            workers = [context.Process(target=concurrent_request, args=(tmp, start, results)) for _ in range(2)]
+            try:
+                for worker in workers:
+                    worker.start()
+                start.wait(timeout=20)
+                self.assertEqual([results.get(timeout=20) for _ in workers], [{"ok": True}] * 2)
+                for worker in workers:
+                    worker.join(timeout=10)
+                    self.assertEqual(worker.exitcode, 0)
+                self.assertEqual(cookies.get_cookie(), "_t=2")
+            finally:
+                for worker in workers:
+                    if worker.is_alive():
+                        worker.terminate()
+                        worker.join(timeout=10)
+                results.close()
+            ready = context.Event()
+            holder = context.Process(target=hold_cookie_lock, args=(tmp, ready))
+            holder.start()
+            try:
+                self.assertTrue(ready.wait(timeout=20))
+                with self.assertRaises(RuntimeError):
+                    with cookies.locked(timeout=0.1):
+                        self.fail("lock was not exclusive")
+            finally:
+                holder.terminate()
+                holder.join(timeout=10)
+            with cookies.locked(timeout=1):
+                self.assertEqual(cookies.get_cookie(), "_t=2")
+
     def test_topic_identifiers_and_pagination(self):
         for value in (42, "42", "https://linux.do/t/42/5", "https://linux.do/t/example/42/5"):
             self.assertEqual(server._as_topic_id(value), 42)
@@ -105,6 +172,10 @@ class CoreTests(unittest.TestCase):
                     server._fetch("/test.json")
                 self.assertNotIn("private-secret", str(error.exception))
                 self.assertTrue(cookies.CACHE.exists())
+            get.return_value.status_code = 404
+            with self.assertRaisesRegex(ToolError, "未识别登录 Cookie"):
+                server._fetch("/session/current.json")
+            self.assertTrue(cookies.CACHE.exists())
             get.return_value.status_code = 401
             with self.assertRaises(ToolError):
                 server._fetch("/test.json")
@@ -116,7 +187,12 @@ class CoreTests(unittest.TestCase):
                     cookies._write_cache("_t=next")
             self.assertEqual(cookies.get_cookie(), "_t=bootstrap")
             self.assertEqual(list(Path(tmp).glob(".cookie-*")), [])
-        for value in ("_t=abc; other=secret", "_t=abc\r\nInjected: true", "session=wrong"):
+        for value in ("padded-token==", "_t=padded-token==", "opaque=value"):
+            expected = "_t=" + server.urllib.parse.quote(value.removeprefix("_t="), safe="%")
+            self.assertEqual(cookies._normalize(value), expected)
+        self.assertEqual(cookies._normalize("a+b/c=="), "_t=a%2Bb%2Fc%3D%3D")
+        self.assertEqual(cookies._normalize("_t=a%2Bb%2Fc%3D%3D"), "_t=a%2Bb%2Fc%3D%3D")
+        for value in ("_t=abc; other=secret", "_t=abc\r\nInjected: true", "_t="):
             with self.assertRaises(ValueError):
                 cookies._normalize(value)
 
@@ -136,11 +212,23 @@ class CoreTests(unittest.TestCase):
                     manifest = json.loads(zipped.read(".codex-plugin/plugin.json"))
                     if app_id:
                         self.assertNotIn("mcpServers", manifest)
-                        self.assertEqual(json.loads(zipped.read(".app.json"))["apps"]["linuxdo"]["id"], app_id)
+                        self.assertEqual(json.loads(zipped.read(".app.json"))["apps"]["linuxdo"]["id"], app_id.removeprefix("plugin_"))
                     else:
                         self.assertNotIn(".app.json", names)
+                        config = json.loads(zipped.read("mcp.json"))["mcpServers"]["linuxdo"]
+                        self.assertEqual(config["type"], "stdio")
+                        self.assertEqual(config["args"][-1], "linuxdo_mcp.server")
+            archive = packager.package(Path(tmp) / "local.zip", python_command=sys.executable)
+            with ZipFile(archive) as zipped:
+                for name in ("mcp.json", ".mcp.json"):
+                    self.assertEqual(json.loads(zipped.read(name))["mcpServers"]["linuxdo"]["command"], sys.executable)
             with self.assertRaises(ValueError):
                 packager.package(Path(tmp) / "bad.zip", "https://evil.test/")
+            archive = packager.package(Path(tmp) / "cloud-update.zip", "plugin_asdk_app_testonly",
+                                       plugin_name="dev-testonly")
+            with ZipFile(archive) as zipped:
+                for name in ("plugin.json", ".codex-plugin/plugin.json"):
+                    self.assertEqual(json.loads(zipped.read(name))["name"], "dev-testonly")
 
 
 class ToolTests(unittest.IsolatedAsyncioTestCase):

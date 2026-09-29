@@ -1,5 +1,5 @@
 {
   "mcpServers": {
-    "linuxdo": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}
+    "linuxdo": {"type": "stdio", "command": "python", "args": ["-X", "utf8", "-m", "linuxdo_mcp.server"]}
   }
 }

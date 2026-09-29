@@ -1,5 +1,17 @@
 # 开发操作记录
 
+## 0.4.0 后续安装与 stdio 配置
+
+2026-09-29，用户选择由 Codex 自动拉起，并授权本机安装及接入 ChatGPT。编辑前再次导出 Git bundle，备份并校验当前 Codex 配置；本机审计目录为 `%USERPROFILE%/.codex/installation-records/linuxdo-stdio-20260929-185358/`。
+
+改动包括默认 stdio、打包时指定 Python、跨进程 Cookie 请求锁、裸 token 的等号兼容和更清晰的未登录错误。Cookie 配置命令也使用同一个文件锁。未增加依赖、开机任务或常驻 HTTP 服务。
+
+用官方 scaffold 创建此前不存在的 personal marketplace，并通过 CLI 安装 `linuxdo-mcp@personal`。配置结构比较确认只新增此插件的 enabled 项，没有覆盖其他设置。运行环境因中文 CA 路径问题迁到本机纯英文目录，重新生成本机包并用官方 cachebuster 流程重装；portable 根清单同步同一版本后再安装。
+
+用户自行输入 Cookie；初次裸 token 的等号被错误拒绝，已修复并回归测试。用户自行登录 Platform、确认创建私有 Tunnel，并在本机输入仅有 Tunnels Read/Use 权限的运行密钥。密钥没有写入源码或聊天；Tunnel profile 仅保存环境变量引用。账户 ID、真实 Tunnel ID、截图及密钥输入脚本只保存在本机审计目录，不进仓库。ChatGPT 已成功安装含连接与 Skill 的完整包，真实 Work 对话完成搜索及读帖；当前实测范围见 VALIDATION.md。
+
+下文为 0.3.0 初始创建记录。
+
 日期：2026-09-29。范围：在用户指定的工作目录创建插件和文档，验证后提交到 `aldington-david/linuxdo-mcp`。未修改 Codex 全局配置或现有个人 marketplace，未创建公网服务或真实 Tunnel。
 
 ## 基线与备份
