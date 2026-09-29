@@ -2,6 +2,8 @@
 
 研究与测试：2026-09-29 至 2026-09-30（新加坡时间）。
 
+**2026-09-30 更新：第二轮 GitHub 调查仍未找到合适的现成替代，已按用户要求撤除本次 Cloudflare 测试 Worker、独立存储及测试授权。既有业务核对未变。源码保留用于复查，不代表当前有在线测试服务。** 详见 [第二轮调查与回退结果](GITHUB-FOLLOWUP.md)。
+
 ## 结论
 
 未找到能在纯 Cloudflare Workers 中直接替代 `curl_cffi`、并适用于 Linux.do 的成熟 Chrome TLS 指纹模拟方案。已新建真正的云端 Worker 进行验证；部署、鉴权和独立 SQLite Durable Object 运行正常，但原生 `fetch` 的匿名请求和携带独立 `_t` 的登录验证请求均被 Linux.do 的 Cloudflare 防护拦截。
