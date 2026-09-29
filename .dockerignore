@@ -1,0 +1,13 @@
+.git
+.venv
+.local
+.env*
+dist
+build
+__pycache__
+**/__pycache__
+**/*.pyc
+**/cookie.json
+**/*secret*
+experiments
+tests

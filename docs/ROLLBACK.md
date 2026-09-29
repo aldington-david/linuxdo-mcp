@@ -1,5 +1,13 @@
 # 回滚与停用
 
+## 0.6.0 VPS 停用与回退
+
+运行 `bash linuxdo.sh stop` 仅停止当前项目，保留 Cookie、密钥和证书卷。不要使用 `down -v` 或全局 `docker system prune`。脚本遇到同名项目来自其他目录会停止，避免修改别的部署。
+
+`.local/vps/backups/` 保存更新前部署配置和镜像记录。代码/镜像回退不应恢复旧 Cookie；服务器可能已经轮换会话。真正撤销访问需轮换 MCP key，并在对应平台撤销论坛会话/Tunnel key。
+
+本版本没有自动迁移现有 Windows 安装；若只是尝试 VPS，不需要回退电脑上的插件。
+
 ## 0.5.0 管理脚本的停用
 
 在 LinuxDo.cmd 中选“停止 ChatGPT 通道”，只停止本地 linuxdo-personal runtime；不删除远程 Tunnel 或 ChatGPT 插件。若启用了登录自启，再选“关闭登录后自启”，只移除本脚本对应的当前用户启动快捷方式。

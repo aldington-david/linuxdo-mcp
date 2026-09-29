@@ -1,0 +1,21 @@
+# Only synthetic credentials and forum fixtures. All published ports are loopback/ephemeral.
+services:
+  mcp:
+    environment:
+      LINUXDO_PUBLIC_URL: https://linuxdo.test
+    ports:
+      - "127.0.0.1::8787"
+    volumes:
+      - ../../tests:/testfixtures:ro
+    command:
+      - python
+      - -c
+      - "import sys; sys.path.insert(0, '/testfixtures'); from test_plugin import server, fixture; server._fetch=fixture; from linuxdo_mcp.http_server import main; main()"
+  edge:
+    ports: !override
+      - "127.0.0.1::8080"
+      - "127.0.0.1::8443"
+    environment:
+      LINUXDO_DOMAIN: linuxdo.test
+    volumes:
+      - ../../tests/Caddyfile.vps-test:/etc/caddy/Caddyfile:ro

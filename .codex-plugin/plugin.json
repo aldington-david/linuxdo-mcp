@@ -1,6 +1,6 @@
 {
   "name": "linuxdo-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "使用个人 Linux.do 账号搜索社区、阅读话题与回复，并保留原帖出处。",
   "author": {
     "name": "aldington-david",

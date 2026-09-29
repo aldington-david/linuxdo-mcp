@@ -1,5 +1,16 @@
 # 验证记录
 
+## 0.6.0 Linux VPS / Docker（2026-09-30）
+
+- 在本机 Docker Linux/amd64 构建 MCP、Caddy HTTPS 和可选 Tunnel 镜像。应用 UID 10001，访问密钥权限 0600；只读根文件系统、cap_drop=ALL 和禁止提权配置可运行。
+- Linux 容器内完整 11 组回归通过（原有 7 组、新增 4 组）；鉴权缺失/错误、重复 Authorization、密钥轮换、缺失密钥拒绝启动/关闭访问、请求限制、并发限制、同名无关项目保护均有离线检查。
+- 真容器 HTTP 和启用证书验证的 HTTPS 测试通过：401、Host/Origin 拒绝、请求体上限、13 个 MCP 工具发现、虚拟论坛身份及搜索调用。测试 CA 未安装到系统信任库。
+- 通过非 TTY 的 docker exec 标准输入更新合成 Cookie，通过校验后存储，输入未回显。轮换后旧 MCP token 立即返回 401；重建容器后 Cookie 和新 token 均保留，HTTPS 调用再次通过。
+- 镜像内匿名 curl_cffi Chrome 请求 Linux.do 公共 site.json 返回 200 JSON；这仅验证本机容器出口，不代表目标 VPS 已放行或完成真实账号登录。
+- 官方 Linux Tunnel 二进制经过固定 SHA256 校验，在无额外权限的容器中可执行；没有使用真实运行 key 完成目标 VPS 的 Tunnel 调用，也未声称完成公网 CA 签发或 arm64 实机验收。
+
+本机现有 Windows 安装和运行中的通道没有迁移。本节 Docker 网络测试使用独立项目及合成凭证。
+
 ## 0.5.0 本地管理与登录检测（2026-09-30）
 
 - `LinuxDo.cmd` / `Manage-LinuxDo.ps1` 已在用户本机执行安装更新，插件启用；Codex 配置文件修改前后的 SHA256 一致，没有改变其他配置。

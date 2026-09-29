@@ -1,0 +1,5 @@
+# Only for an existing HTTPS reverse proxy on this VPS.
+services:
+  mcp:
+    ports:
+      - "127.0.0.1:${LINUXDO_LOOPBACK_PORT:-19878}:8787"

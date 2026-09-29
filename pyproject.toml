@@ -1,14 +1,16 @@
 [project]
 name = "linuxdo-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for searching and reading linux.do (Discourse)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=2.2.0,<3",
     "curl_cffi>=0.7",
-    "pycookiecheat>=0.8",
 ]
+
+[project.optional-dependencies]
+browser = ["pycookiecheat>=0.8"]
 
 [project.scripts]
 linuxdo-mcp = "linuxdo_mcp.server:main"

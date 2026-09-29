@@ -1,0 +1,26 @@
+{
+    admin off
+    http_port 8080
+    https_port 8443
+    servers {
+        protocols h1 h2
+        max_header_size 16KB
+        timeouts {
+            read_header 10s
+            read_body 20s
+            write 180s
+            idle 30s
+        }
+    }
+}
+
+{$LINUXDO_DOMAIN} {
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy mcp:8787 {
+        header_up Host {$LINUXDO_DOMAIN}
+    }
+    header Cache-Control "no-store"
+    header X-Content-Type-Options "nosniff"
+}

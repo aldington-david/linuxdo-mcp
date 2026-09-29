@@ -1,0 +1,19 @@
+{
+    admin off
+    http_port 8080
+    https_port 8443
+    skip_install_trust
+    servers {
+        protocols h1 h2
+    }
+}
+linuxdo.test {
+    tls internal
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy mcp:8787 {
+        header_up Host linuxdo.test
+    }
+    header Cache-Control "no-store"
+}

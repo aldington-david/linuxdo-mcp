@@ -1,5 +1,15 @@
 # 开发操作记录
 
+## 0.6.0 VPS 容器版本（2026-09-30）
+
+以 c1d0a79 为基线，新增独立 HTTP 保护入口、Docker/Compose、HTTPS 代理、可选官方 Tunnel 镜像和 Linux 操作脚本；原 stdio/回环 HTTP 保持兼容，未自动升级用户电脑上已安装的 0.5.0。
+
+公开入口必须有访问密钥，身份校验先于 MCP 处理；使用既有 SDK 的 Host/Origin 与请求体检查。公开 Cookie 管理接口未提供，运维通过 SSH 脚本标准输入完成。浏览器读取依赖改为可选，避免 VPS 安装无用的桌面依赖。
+
+本机 Docker 原未启动，为测试启动了已有 Docker Desktop；启动后运行容器列表为空。验证资源均属于 linuxdo-vps-verify-01a0ec47。初次 Caddy 最小权限执行失败源于二进制 file capability，已去除不需要的特权并使用容器高端口。测试网络 internal 设置在 Docker 27 下不发布端口，已仅调整测试网络，所有宿主映射仍限于回环地址。
+
+验证范围及限制见 VALIDATION.md。没有修改 VPS、DNS、Cloudflare、现有防火墙或本机运行凭证。目标机首次部署仍需用户提供独立 Cookie、域名或反代条件，以及可选 Tunnel 授权。
+
 ## 0.5.0 统一管理脚本（2026-09-30）
 
 增加 Windows 菜单入口，自动安装/更新本机插件、检查登录、配置加密 Tunnel key、通过官方 runtimes 管理后台通道，并提供可选登录自启。继续复用已有远程 Tunnel 和 ChatGPT 连接，没有新建云服务。真实密钥不进入源码、ZIP 或 Git。

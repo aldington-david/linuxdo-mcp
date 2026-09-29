@@ -28,6 +28,7 @@ from urllib.parse import quote
 
 COOKIE_NAME = "_t"
 URL = "https://linux.do/"
+UPDATE_HINT = "运行 LinuxDo.cmd，选择“更新 Cookie”" if os.name == "nt" else "运行 ./linuxdo.sh cookie"
 CACHE = pathlib.Path(
     os.environ.get("LINUXDO_CACHE_DIR")
     or os.path.expanduser("~/.cache/linuxdo-mcp")
@@ -273,7 +274,7 @@ def get_cookie():
         _write_cache(cookie)
         return cookie
     raise RuntimeError(
-        "未配置或登录凭证已过期。请运行 LinuxDo.cmd，选择“更新 Cookie”（或设置 LINUXDO_COOKIE）；"
+        f"未配置或登录凭证已过期。请{UPDATE_HINT}（或设置 LINUXDO_COOKIE）；"
         "若确实要自动读浏览器，设 LINUXDO_READ_BROWSER=1——"
         "但读主浏览器会与它共用同一登录、可能互相顶下线，"
         "强烈建议改用隐身窗口/独立 profile 登录后取其独立 _t。"

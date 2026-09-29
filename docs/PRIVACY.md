@@ -9,7 +9,8 @@
 - Windows 管理脚本将 Tunnel key 以 DPAPI 加密保存在本机用户专用目录，运行时通过环境变量传给官方 tunnel-client。首次/过期更新需要用户本地隐藏输入；不自动读取浏览器密码。登录后自启为可选，不默认启用。
 - Cookie 更新会先请求 Linux.do 身份接口，成功后才替换旧值；首次工具请求及使用期间超过 5 分钟后的下一次请求会重新验证身份，空闲期间不后台轮询。
 - 默认 stdio 由本机客户端自动启动；共享缓存以系统文件锁保护整个请求周期。
-- 可选 HTTP 仅监听回环地址，但本机其他进程仍可能访问它。它不是多用户隔离服务，也没有公网 OAuth 或 Bearer-token 验证。
+- 原 `server --transport streamable-http` 入口仍只监听回环地址。新增 VPS `http_server` 入口单独实施 Bearer 密钥校验，公网通过 HTTPS 反代；它是单账号服务，不是多用户 OAuth 系统。
+- VPS 的 Cookie、MCP key 和可选 Tunnel key 保存在本项目数据卷，文件权限 0600；密钥和 Cookie 更新通过标准输入，不进入镜像、命令参数或公开管理接口。Linux 数据卷为权限保护的明文，宿主 root / Docker 管理员仍可读取。
 - 插件 ZIP 使用固定文件允许列表，不包含 `.venv`、Git 历史、Cookie 或 `.env`；个人连接映射只在指定 `--app-id` 时写入生成的绑定包。
 
 不要将缓存迁入 Git 仓库或 OneDrive。日志及测试材料不要记录真实凭证。停用后可撤销独立站点会话、删除 Cookie 缓存，并在 ChatGPT / Platform 停用对应插件和 Tunnel。已经进入调用方对话的数据，需要按该产品的数据管理方式处理。

@@ -1,0 +1,82 @@
+services:
+  mcp:
+    image: linuxdo-mcp-vps:0.6.0
+    build:
+      context: ../..
+      dockerfile: deploy/linux/Dockerfile
+      target: app
+    environment:
+      LINUXDO_PUBLIC_URL: ${LINUXDO_PUBLIC_URL:?Run ./linuxdo.sh setup first}
+      LINUXDO_REQUESTS_PER_MINUTE: ${LINUXDO_REQUESTS_PER_MINUTE:-60}
+      LINUXDO_MAX_INFLIGHT: ${LINUXDO_MAX_INFLIGHT:-4}
+    volumes:
+      - data:/data
+    expose:
+      - "8787"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 64
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+  edge:
+    profiles: [https]
+    image: linuxdo-mcp-edge:0.6.0
+    build:
+      context: ../..
+      dockerfile: deploy/linux/Dockerfile.caddy
+    environment:
+      LINUXDO_DOMAIN: ${LINUXDO_DOMAIN:-localhost}
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - tls_data:/data
+      - tls_config:/config
+    depends_on:
+      mcp: {condition: service_healthy}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+  tunnel:
+    profiles: [tunnel]
+    image: linuxdo-mcp-tunnel:0.6.0
+    build:
+      context: ../..
+      dockerfile: deploy/linux/Dockerfile
+      target: tunnel
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 64
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  data:
+  tls_data:
+  tls_config:

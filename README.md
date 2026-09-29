@@ -12,9 +12,11 @@ ChatGPT → Secure MCP Tunnel → 本机 stdio MCP → Linux.do
 两个入口共用 Cookie 缓存，由跨进程锁协调轮换。
 ```
 
-Cookie 保存在本机；查询及读取到的帖子内容会作为工具结果传给调用方。HTTP 入口只允许监听回环地址，没有多用户鉴权，不能直接作为公网服务发布。
+Cookie 保存在运行服务器的本机；查询及读取到的帖子内容会作为工具结果传给调用方。原本机 HTTP 入口仍只允许监听回环地址，不能直接发布到公网；VPS 版使用独立的密钥校验入口和 HTTPS 代理。两种方式都不是多用户隔离服务。
 
 ## 开始使用
+
+**Linux VPS / Docker：** 在交互 SSH 终端运行 `bash linuxdo.sh setup`。提供带密钥校验的公网 HTTPS MCP、已有反代接入，以及可选 ChatGPT 私有 Tunnel；Cookie 用同一脚本隐藏粘贴更新。[VPS 部署、限制与安全说明](docs/VPS-DOCKER.md)
 
 Windows 用户直接双击仓库根目录的 **[LinuxDo.cmd](LinuxDo.cmd)**，选 **1 一键安装、授权并启动**；只用本机 Codex 时选 9。首次需要的登录和粘贴步骤由脚本逐步提示，日后用同一入口更新 Cookie、检查状态或停止通道。[完整操作说明](docs/MANAGE-WINDOWS.md)
 
@@ -83,7 +85,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.5.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网 UI、OAuth、多账号托管或论坛写入操作。
+本 fork 的 Python 包版本为 `0.6.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)
