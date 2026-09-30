@@ -26,6 +26,8 @@ import tempfile
 import time
 from urllib.parse import quote
 
+from . import budget
+
 COOKIE_NAME = "_t"
 URL = "https://linux.do/"
 UPDATE_HINT = "运行 LinuxDo.cmd，选择“更新 Cookie”" if os.name == "nt" else "运行 ./linuxdo.sh cookie"
@@ -51,6 +53,7 @@ def locked(timeout=30):
             release = lambda: fcntl.flock(lock, fcntl.LOCK_UN)
         deadline = time.monotonic() + timeout
         while True:
+            budget.remaining()
             try:
                 acquire()
                 break
@@ -59,7 +62,7 @@ def locked(timeout=30):
                     raise
                 if time.monotonic() >= deadline:
                     raise RuntimeError("另一个 Linux.do 请求仍在使用登录凭证，请稍后重试。") from None
-                time.sleep(0.05)
+                budget.sleep(min(0.05, max(0, deadline - time.monotonic())))
         try:
             yield
         finally:

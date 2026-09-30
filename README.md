@@ -62,6 +62,8 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 `format_*` 返回 Markdown，其余返回结构化 JSON。搜索支持 `order:latest`、`after:YYYY-MM-DD`、`before:YYYY-MM-DD`、`in:title`、`#分类`、`@用户`、`tags:标签`。分页时用 `get_topic.next_start`；`start` 是可见帖子的位置，不一定等于实际楼号 `floor`。`next_start=null` 表示结束。
 
+按客户端 60 秒基准，每次调用共用 45 秒工作预算，并有 50 秒返回保护。搜索或读帖的 `partial=true` 表示预算内未完成，已有结果可用；分别按 `next_page`、`next_start` 续读。详情见 [超时与续读](docs/REQUEST-PACING.md)。
+
 ## 插件文件与打包
 
 - `plugin.json`、`mcp.json`：Agent Plugins 1.0.0 入口和本机连接。
@@ -89,7 +91,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.6.4`，使用 MCP Python SDK `>=2.2.0,<3`。Windows 在确认 Cookie 或 Tunnel key 失效时主动弹出一次隐藏输入向导；健康状态与普通网络故障仍保持静默。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
+本 fork 的 Python 包版本为 `0.6.5`，使用 MCP Python SDK `>=2.2.0,<3`。Windows 在确认 Cookie 或 Tunnel key 失效时主动弹出一次隐藏输入向导；健康状态与普通网络故障仍保持静默。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

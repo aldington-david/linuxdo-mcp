@@ -6,6 +6,7 @@ description: 搜索和阅读 Linux.do（L 站）的帖子与回复，整理社�
 使用插件提供的 Linux.do 只读工具。用户当前的具体要求优先于下面的默认流程。
 
 - 检索时先 `search`，关键词不足可换近义词；需要限定时间时使用明确日期的 `after:YYYY-MM-DD`、`before:YYYY-MM-DD` 或 `order:latest`。搜索页码从 1 开始，`pages` 每次最多 5 页。
+- 每次调用共用 45 秒工作预算。`partial=true`、`stop_reason=time_budget_exceeded` 表示本次未完成，已有结果仍可用；搜索保持原 query，从 `next_page` 继续，读帖从 `next_start` 继续。不要把部分结果说成已经读完，也不要自行按返回条数推算续读位置。没有取得结果而报预算耗尽时，说明超时，不解释为“没有内容”。
 - 对决定结论的重要结果调用 `get_topic` 阅读正文与相关回复，不把 `blurb` 当成完整证据。用户直接给链接时可直接读帖。
 - 长帖每次最多取 100 条，默认 20 条。用返回的 `next_start` 继续，直到为 null 或已有足够证据。`start` 是可见帖子流位置，`floor` 才是真实楼号；已删楼层会使二者不同。说明未读完或无法取得的部分。
 - 列表工具 `latest_topics`、`top_topics`、`category_topics`、`tag_topics` 的页码从 0 开始。分类或标签不明确时先列出可用项。

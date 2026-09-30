@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from linuxdo_mcp import cookies, pacing, server
+from linuxdo_mcp import budget, cookies, pacing, server
 from mcp.server.mcpserver.exceptions import ToolError
 
 
@@ -19,6 +19,7 @@ class Clock:
         self.now, self.waits = 100.0, []
     def time(self):
         return self.now
+    monotonic = time
     def sleep(self, seconds):
         self.waits.append(seconds)
         self.now += seconds
@@ -39,7 +40,8 @@ class PacingTests(unittest.TestCase):
     def test_jitter_idle_time_network_time_and_search_budget(self):
         clock = Clock()
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
-             patch.object(pacing, "time", clock), patch.object(pacing.random, "uniform", side_effect=lambda low, high: (low + high) / 2):
+             patch.object(pacing, "time", clock), patch.object(budget, "time", clock), \
+             patch.object(pacing.random, "uniform", side_effect=lambda low, high: (low + high) / 2):
             pacing.before_request("/search.json?q=sensitive-fixture")
             self.assertEqual(clock.waits, [])
             clock.now += 0.4  # Existing network time reduces, rather than adds to, the next wait.
@@ -64,7 +66,7 @@ class PacingTests(unittest.TestCase):
             body = '{"current_user":{"id":1}}' if url.endswith('/session/current.json') else '{"ok":true}'
             return SimpleNamespace(status_code=200, text=body, cookies={}, headers={})
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
-             patch.object(pacing, "time", clock), patch.object(server, "time", clock), \
+             patch.object(pacing, "time", clock), patch.object(server, "time", clock), patch.object(budget, "time", clock), \
              patch.object(pacing.random, "uniform", side_effect=lambda low, high: (low + high) / 2), \
              patch.object(server.creq, "get", side_effect=get):
             cookies._write_cache("_t=fixture")
@@ -76,7 +78,7 @@ class PacingTests(unittest.TestCase):
     def test_server_cooldown_blocks_next_request_without_waiting_or_losing_cookie(self):
         clock = Clock()
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
-             patch.object(pacing, "time", clock), patch.object(server.creq, "get") as get:
+             patch.object(pacing, "time", clock), patch.object(budget, "time", clock), patch.object(server.creq, "get") as get:
             cookies._write_cache("_t=fixture", validated_at=time.time())
             get.return_value = SimpleNamespace(status_code=429, text="{}", cookies={}, headers={"Retry-After": "7"})
             def config_changed_during_response(*args, **kwargs):

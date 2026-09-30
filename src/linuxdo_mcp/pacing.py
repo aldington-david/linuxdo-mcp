@@ -7,7 +7,7 @@ import random
 import tempfile
 import time
 
-from . import cookies
+from . import budget, cookies
 
 DEFAULTS = {
     "min_seconds": 1.0, "max_seconds": 1.8,
@@ -80,6 +80,7 @@ def _write(state):
 
 
 def before_request(path):
+    budget.remaining()
     values, state = policy(), _read()
     now = time.time()
     remaining = state.get("cooldown_until", 0) - now
@@ -90,7 +91,7 @@ def before_request(path):
     # Idle/network time counts toward the gap. Bound ordinary waiting if the clock moves backwards.
     wait = min(max(0, due - now), max(values["max_seconds"], values["search_max_seconds"]))
     if wait:
-        time.sleep(wait)
+        budget.sleep(wait)
     started = time.time()
     state["next_request_at"] = started + random.uniform(values["min_seconds"], values["max_seconds"])
     if search:
