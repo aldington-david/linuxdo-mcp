@@ -12,11 +12,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $env:PYTHONUTF8 = '1'
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
+# Hidden PowerShell otherwise decodes native JSON using the Windows OEM code page.
+[Console]::OutputEncoding = $OutputEncoding
 if (!$IsWindows) { throw '此管理脚本用于 Windows；其他系统请参阅 docs/USAGE.md。' }
+$StateDir = [IO.Path]::GetFullPath($StateDir)
 $Repo = $PSScriptRoot
 $ManagerScript = $PSCommandPath
 $CodexRoot = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
-$Creator = Join-Path $CodexRoot 'skills\.system\plugin-creator\scripts'
 $Alias = 'linuxdo-personal'
 $ConfigFile = Join-Path $StateDir 'settings.json'
 $KeyFile = Join-Path $StateDir 'tunnel-key.xml'
@@ -31,6 +33,14 @@ function Run-Checked([string]$Exe, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw ('操作未完成，退出码 ' + $LASTEXITCODE + '。请查看上方提示。') }
 }
 function Save-Settings {
+    # Resolve MSIX virtualization for every saved runtime path, including first-time Tunnel discovery.
+    if ($Settings.python -and (Test-Path -LiteralPath $Settings.python)) {
+        foreach ($name in @('python','tunnel_client')) {
+            if ($Settings[$name] -and (Test-Path -LiteralPath $Settings[$name])) {
+                $Settings[$name] = (Run-Checked $Settings.python @('-X','utf8','-c','import os,sys; print(os.path.realpath(sys.argv[1]))',$Settings[$name])).Trim()
+            }
+        }
+    }
     New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     & icacls.exe $StateDir /inheritance:r /grant:r "*${sid}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' | Out-Null
@@ -59,10 +69,32 @@ function Update-Cookie {
     if ($Unattended) { throw 'Cookie 需要更新，请双击 LinuxDo.cmd，选择“更新 Cookie”。' }
     Run-Checked $Settings.python @('-X','utf8','-m','linuxdo_mcp.server','--configure-cookie') | Out-Host
 }
+function Get-CodexTaskName {
+    $identity = [IO.Path]::GetFullPath($StateDir).ToLowerInvariant()
+    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($identity)))
+    return 'LinuxDo-Codex-Tunnel-' + $hash.Substring(0,12)
+}
+function Install-CodexAutoStart {
+    $name = Get-CodexTaskName
+    $directory = Join-Path $StateDir 'codex-startup'
+    $scriptPath = Join-Path $directory 'Manage-LinuxDo.ps1'
+    $arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $scriptPath + '" -Action Start -Unattended -StateDir "' + $StateDir + '"'
+    $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+    if ($existing -and (@($existing.Actions).Count -ne 1 -or $existing.Actions[0].Arguments -ne $arguments)) {
+        throw '同名 Windows 任务不属于此部署，已停止，未覆盖。'
+    }
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    Copy-Item -LiteralPath $ManagerScript -Destination $scriptPath -Force
+    $action = New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument $arguments -WorkingDirectory $directory
+    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+    # No trigger: Codex explicitly starts this task; no timer or logon action.
+    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Description 'Linux.do: start/reuse the existing Tunnel when Codex loads its local plugin.' -Force | Out-Null
+    return $name
+}
 function Install-Local {
     if (!(Get-Command codex -ErrorAction SilentlyContinue)) { throw '未找到 Codex 命令，请先安装并登录 Codex。' }
-    if (!(Test-Path -LiteralPath (Join-Path $Creator 'read_marketplace_name.py'))) { throw '未找到 Codex 的 Plugin Creator 工具，请先完成 Codex 安装。' }
-    $helperPython = (Get-Command python -ErrorAction Stop).Source
+    $null = Get-Command python -ErrorAction Stop
     $plugins = (& codex plugin list --json) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw '无法读取 Codex 插件状态。' }
     $installed = @($plugins.installed | Where-Object pluginId -eq 'linuxdo-mcp@personal')
@@ -71,9 +103,23 @@ function Install-Local {
         if ($installed[0].source.source -ne 'local') { throw '现有插件不是本地来源，已停止覆盖。' }
         $pluginDir = $installed[0].source.path
         if (!$Settings.python) {
-            $mcpFile = Join-Path $pluginDir '.mcp.json'
-            if (Test-Path -LiteralPath $mcpFile) { $Settings.python = (Get-Content -LiteralPath $mcpFile -Raw | ConvertFrom-Json).mcpServers.linuxdo.command }
+            $runtimeFile = Join-Path $pluginDir 'scripts\runtime.json'
+            if (Test-Path -LiteralPath $runtimeFile) {
+                $Settings.python = (Get-Content -LiteralPath $runtimeFile -Raw | ConvertFrom-Json).python
+            } else {
+                $mcpFile = Join-Path $pluginDir '.mcp.json'
+                if (Test-Path -LiteralPath $mcpFile) { $Settings.python = (Get-Content -LiteralPath $mcpFile -Raw | ConvertFrom-Json).mcpServers.linuxdo.command }
+            }
         }
+    }
+    $marketPath = Join-Path $HOME '.agents\plugins\marketplace.json'
+    $market = if (Test-Path -LiteralPath $marketPath) { Get-Content -LiteralPath $marketPath -Raw | ConvertFrom-Json -AsHashtable } else { @{name='personal';plugins=@()} }
+    if ($market.name -ne 'personal') { throw '默认个人市场名称不是 personal，已停止插件覆盖。' }
+    $entries = @($market.plugins | Where-Object name -eq 'linuxdo-mcp')
+    if ($entries.Count -gt 1) { throw '个人市场存在重复的 Linux.do 插件条目，已停止。' }
+    if (!$installed.Count -and $entries.Count) {
+        if ($entries[0].source.source -ne 'local') { throw '已有 Linux.do 市场条目不是本地来源，已停止覆盖。' }
+        $pluginDir = [IO.Path]::GetFullPath((Join-Path $HOME $entries[0].source.path))
     }
     if (!$Settings.python -or !(Test-Path -LiteralPath $Settings.python)) {
         $runtime = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv'
@@ -88,31 +134,32 @@ function Install-Local {
         if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $backup }
     }
     if (Test-Path -LiteralPath $pluginDir) { Copy-Item -LiteralPath $pluginDir -Destination (Join-Path $backup 'plugin') -Recurse }
+    $taskName = Get-CodexTaskName
+    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+        Export-ScheduledTask -TaskName $taskName | Set-Content -LiteralPath (Join-Path $backup 'codex-tunnel-task.xml') -Encoding utf8
+    }
+    $taskName = Install-CodexAutoStart
     Write-Host '正在安装或更新本机程序。'
     Run-Checked $Settings.python @('-m','pip','install','--quiet','--disable-pip-version-check',$Repo) | Out-Host
     Run-Checked $Settings.python @('-m','pip','check') | Out-Host
-    & $helperPython -c 'import yaml' 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Run-Checked $Settings.python @('-m','pip','install','--quiet','--disable-pip-version-check','PyYAML') | Out-Host
-        $helperPython = $Settings.python
-    }
-    if (!$installed.Count) {
-        Run-Checked $Settings.python @((Join-Path $Creator 'create_basic_plugin.py'),'linuxdo-mcp','--with-marketplace','--path',(Split-Path $pluginDir)) | Out-Host
-    }
-    $market = Run-Checked $Settings.python @((Join-Path $Creator 'read_marketplace_name.py'))
-    if ($market.Trim() -ne 'personal') { throw '默认个人市场名称不是 personal，已停止插件覆盖。' }
     $archive = Join-Path $Repo 'dist\linuxdo-mcp-local.zip'
-    Run-Checked $Settings.python @((Join-Path $Repo 'scripts\package_plugin.py'),'--python',$Settings.python,'--output',$archive) | Out-Host
+    Run-Checked $Settings.python @((Join-Path $Repo 'scripts\package_plugin.py'),'--python',$Settings.python,'--manager-state',$StateDir,'--tunnel-task',$taskName,'--output',$archive) | Out-Host
     Expand-Archive -LiteralPath $archive -DestinationPath $pluginDir -Force
-    Run-Checked $Settings.python @((Join-Path $Creator 'update_plugin_cachebuster.py'),$pluginDir) | Out-Host
-    $portablePath = Join-Path $pluginDir 'plugin.json'
-    $portable = Get-Content -LiteralPath $portablePath -Raw | ConvertFrom-Json -AsHashtable
-    $portable.version = (Get-Content -LiteralPath (Join-Path $pluginDir '.codex-plugin\plugin.json') -Raw | ConvertFrom-Json).version
-    $portable | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $portablePath -Encoding utf8
-    Run-Checked $helperPython @((Join-Path $Creator 'validate_plugin.py'),$pluginDir) | Out-Host
+    $version = (Get-Content -LiteralPath (Join-Path $pluginDir 'plugin.json') -Raw | ConvertFrom-Json).version + '+codex.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmssfff')
+    foreach ($name in @('plugin.json','.codex-plugin\plugin.json')) {
+        $manifestPath = Join-Path $pluginDir $name
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+        $manifest.version = $version
+        $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    }
+    if (!$entries.Count) {
+        $market.plugins = @($market.plugins) + @(@{name='linuxdo-mcp';source=@{source='local';path='./plugins/linuxdo-mcp'};policy=@{installation='AVAILABLE';authentication='ON_INSTALL'};category='Productivity'})
+        New-Item -ItemType Directory -Path (Split-Path $marketPath) -Force | Out-Null
+        $market | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $marketPath -Encoding utf8
+    }
     Run-Checked 'codex' @('plugin','add','linuxdo-mcp@personal') | Out-Host
-    Run-Checked $Settings.python @((Join-Path $Repo 'scripts\check_connection.py')) | Out-Host
-    Write-Host '本地安装完成。Codex 加载插件时会自动启动；新建一个对话使用更新后的插件。'
+    Run-Checked $Settings.python @((Join-Path $Repo 'scripts\check_connection.py'),'--plugin-dir',$pluginDir) | Out-Host
+    Write-Host '本地安装完成，插件启动入口握手通过。重新加载 Codex 后验证自动加载；已授权的 Tunnel 会随本地插件后台启动。'
     Write-Host ('本次安装备份：' + $backup)
     $login = Check-Cookie
     if (!$login.ok -and $login.status -in @('missing','expired') -and !$Unattended) { Update-Cookie }
@@ -205,11 +252,32 @@ function Check-TunnelOwner($State) {
     if ($State -and $State.tunnel_id -ne $Settings.tunnel_id) { throw '同名后台通道属于另一个 Tunnel，已停止操作，不会覆盖或关闭它。' }
 }
 function Start-Tunnel {
+    # One Windows user/state directory: serialize concurrent Codex plugin launches.
+    $mutex = [Threading.Mutex]::new($false, 'Local\' + (Get-CodexTaskName))
+    $owned = $false
+    try {
+        try { $owned = $mutex.WaitOne(60000) } catch [Threading.AbandonedMutexException] { $owned = $true }
+        if (!$owned) { throw '另一个启动操作尚未结束，请稍后检查通道状态。' }
+        Start-TunnelLocked
+    } finally {
+        if ($owned) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
+function Start-TunnelLocked {
     Require-Python
+    if ($Unattended -and (!$Settings.tunnel_client -or !(Test-Path -LiteralPath $Settings.tunnel_client))) {
+        throw 'Tunnel 客户端未安装，请打开 LinuxDo.cmd 完成授权安装。'
+    }
     Require-TunnelClient
     Ensure-TunnelId
     $existing = Tunnel-Status
     Check-TunnelOwner $existing
+    if ($existing -and $existing.process_running -and $existing.healthy -and $existing.ready) {
+        Show-TunnelStatus $existing
+        if (Test-Path -LiteralPath (Join-Path $StateDir 'last-error.json')) { Remove-Item -LiteralPath (Join-Path $StateDir 'last-error.json') }
+        return
+    }
     $login = Check-Cookie
     if (!$login.ok) {
         if ($login.status -in @('missing','expired') -and !$Unattended) { Update-Cookie }
@@ -270,6 +338,7 @@ function Invoke-Action([string]$Selected) {
             if ($Settings.python) { $null = Check-Cookie } else { Write-Host '本地环境尚未安装。' }
             Show-TunnelStatus (Tunnel-Status)
             Write-Host ('Windows 登录后自启：' + (Test-Path -LiteralPath $AutoStartFile))
+            Write-Host 'Codex 联动：安装新版插件后，加载本地 MCP 会自动启动/复用已授权的 Tunnel。'
             if (Test-Path -LiteralPath (Join-Path $StateDir 'last-error.json')) { $last = Get-Content -LiteralPath (Join-Path $StateDir 'last-error.json') -Raw | ConvertFrom-Json; Write-Host ('上次未完成的操作：' + $last.error) }
         }
         'Stop' { $state = Tunnel-Status; Check-TunnelOwner $state; if ($state) { Run-Checked $Settings.tunnel_client @('runtimes','stop',$Alias) | Out-Host } else { Write-Host '没有需要停止的本地通道。' } }

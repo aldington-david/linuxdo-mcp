@@ -2,15 +2,23 @@
 import argparse
 import asyncio
 import os
+import json
+from pathlib import Path
 import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 
-async def check(url=None, live=False, query="Codex order:latest"):
-    transport = streamable_http_client(url) if url else stdio_client(StdioServerParameters(
-        command=sys.executable, args=["-X", "utf8", "-m", "linuxdo_mcp.server"], env=dict(os.environ)))
+async def check(url=None, live=False, query="Codex order:latest", plugin_dir=None):
+    params = StdioServerParameters(command=sys.executable,
+                                  args=["-X", "utf8", "-m", "linuxdo_mcp.server"], env=dict(os.environ))
+    if plugin_dir:
+        root = Path(plugin_dir).resolve()
+        config = json.loads((root / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]["linuxdo"]
+        params = StdioServerParameters(command=config["command"], args=config.get("args", []),
+                                      cwd=str(root / config.get("cwd", ".")), env=dict(os.environ))
+    transport = streamable_http_client(url) if url else stdio_client(params)
     async with transport as streams:
         async with ClientSession(streams[0], streams[1], read_timeout_seconds=120) as session:
             init = await session.initialize()
@@ -43,5 +51,8 @@ if __name__ == "__main__":
     parser.add_argument("--url", help="可选 HTTP MCP 地址；不填时由脚本启动 stdio 服务")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--query", default="Codex order:latest")
+    parser.add_argument("--plugin-dir", help="按实际插件清单启动，验证打包后的启动入口")
     args = parser.parse_args()
-    asyncio.run(check(args.url, args.live, args.query))
+    if args.url and args.plugin_dir:
+        parser.error("--url 和 --plugin-dir 不能同时使用")
+    asyncio.run(check(args.url, args.live, args.query, args.plugin_dir))

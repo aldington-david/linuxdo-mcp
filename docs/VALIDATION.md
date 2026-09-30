@@ -1,5 +1,16 @@
 # 验证记录
 
+## 0.6.1 Codex 启动联动修复（2026-09-30）
+
+- 修复前：0.5.0 插件虽启用，Codex 日志仍拒绝便携清单中的绝对 Python command；Tunnel 进程也未运行。独立 Python 测试通过不能作为 Codex 自动加载成功的证据。
+- 修复后，使用当前安装的 Codex app-server 原生加载插件：识别版本 0.6.1、发现 13 个工具，原生 MCP 调用登录成功、搜索返回 50 条、读取 3 条帖子。验证使用临时会话，没有发起模型生成请求。
+- 停止本次 Linux.do runtime 后，由 Codex 加载插件触发 Windows 按需任务，恢复同一个已授权 Tunnel；任务返回 0。关闭测试 MCP 连接后 Tunnel 仍运行。重复加载已安装插件，Tunnel PID 不变且只有一个。
+- 已安装的云端 Linux.do 连接实际搜索返回 50 条，读帖返回 3 条；最终重新启动的通道也成功搜索。测试中曾遇到一次论坛 Cloudflare 拦截，未更换 Cookie 或绕过防护，后续正常验收成功；启动修复不能保证论坛永不拦截。
+- 12 组 Python 测试中 11 组通过、1 组 Linux Bash 专用测试在 Windows 跳过。PowerShell 检查通过，覆盖 DPAPI、同名任务/通道保护、健康 runtime 复用和隔离目录中的登录启动项操作。
+- Codex 全局配置修改前后 SHA256 一致。Windows 登录自启仍关闭；新增任务没有定时/登录触发器，只在插件启动时按需运行。未新建远程 Tunnel，未替换仍有效的 Cookie 或密钥。
+
+没有强制关闭用户正在使用的 Codex 桌面窗口。原生加载验证使用新启动的 Codex 后端；已有对话若仍持有旧 MCP 连接，需要重新加载一次。
+
 ## 0.6.0 Linux VPS / Docker（2026-09-30）
 
 - 在本机 Docker Linux/amd64 构建 MCP、Caddy HTTPS 和可选 Tunnel 镜像。应用 UID 10001，访问密钥权限 0600；只读根文件系统、cap_drop=ALL 和禁止提权配置可运行。

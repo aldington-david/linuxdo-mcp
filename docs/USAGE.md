@@ -62,7 +62,7 @@ $pythonPath = Join-Path $env:LOCALAPPDATA 'linuxdo-mcp\venv\Scripts\python.exe'
 & $pythonPath scripts/package_plugin.py --python $pythonPath
 ```
 
-按第 6 节安装后，新对话会使用插件配置自动启动进程；配置了插件不代表现有对话已加载。不要再额外注册一份同名 HTTP MCP。若移动或删除虚拟环境，需重新打包并安装。Cookie 与插件安装目录分开，更新插件不需要重填仍有效的 Cookie。
+按第 6 节安装后，新对话会使用插件配置自动启动进程；配置了插件不代表现有对话已加载。0.6.1 的专用 Python 包使用随包启动脚本，不能把 Python 绝对路径直接填进便携清单的 command。用 Windows 管理脚本安装时，还会创建按需任务，在加载本地 MCP 时启动/复用已授权的 Tunnel。不要再额外注册一份同名 HTTP MCP。若移动或删除虚拟环境，需重新打包并安装。Cookie 与插件安装目录分开，更新插件不需要重填仍有效的 Cookie。
 
 HTTP 仍保留用于需要它的客户端，但不是默认路径：
 

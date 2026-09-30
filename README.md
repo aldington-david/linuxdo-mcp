@@ -20,7 +20,7 @@ Cookie 保存在运行服务器的本机；查询及读取到的帖子内容会�
 
 Windows 用户直接双击仓库根目录的 **[LinuxDo.cmd](LinuxDo.cmd)**，选 **1 一键安装、授权并启动**；只用本机 Codex 时选 9。首次需要的登录和粘贴步骤由脚本逐步提示，日后用同一入口更新 Cookie、检查状态或停止通道。[完整操作说明](docs/MANAGE-WINDOWS.md)
 
-本地 Codex 在加载 stdio MCP 时自动启动进程；ChatGPT 网页需要独立的 Tunnel 客户端，管理脚本会用官方后台管理命令启动它。可在菜单中选择 Windows 登录后自动启动，默认不启用。电脑关机或断网时，ChatGPT 无法调用本机服务。
+本地 Codex 加载 stdio MCP 时自动启动进程，同时触发 Windows 按需任务，启动或复用已授权的 ChatGPT Tunnel。该任务没有定时或登录触发器；关闭一次工具连接不会关闭 Tunnel。另有可选的 Windows 登录自启，默认不启用。电脑关机或断网时，ChatGPT 无法调用本机服务。
 
 以下是其他系统或手工维护方式：
 
@@ -71,7 +71,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 & $pythonPath scripts/package_plugin.py --app-id plugin_asdk_app_YOUR_REAL_ID
 ```
 
-本机 Python 不在默认 PATH 时，打包时加 `--python "Python 的绝对路径"`。本机包输出到 `dist/linuxdo-mcp-local.zip`；绑定包为 `dist/linuxdo-mcp-chatgpt.zip`。前者由 Codex 启动指定的 Python；后者使用注册的 ChatGPT 连接。包本身不部署服务器，也不创建 Tunnel。
+本机使用专用 Python 环境时，打包加 `--python "Python 的绝对路径"`：插件用 PATH 中的 `python` 执行随包启动脚本，再调用指定环境；不把绝对路径写成插件的 command。Windows 管理脚本还会配置 Tunnel 按需任务。本机包输出到 `dist/linuxdo-mcp-local.zip`；绑定包为 `dist/linuxdo-mcp-chatgpt.zip`。包本身不创建远程 Tunnel，也不包含凭证。
 
 ## 验证与维护
 
@@ -85,7 +85,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.6.0`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
+本 fork 的 Python 包版本为 `0.6.1`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

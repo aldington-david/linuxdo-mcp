@@ -252,14 +252,54 @@ class CoreTests(unittest.TestCase):
             archive = packager.package(Path(tmp) / "local.zip", python_command=sys.executable)
             with ZipFile(archive) as zipped:
                 for name in ("mcp.json", ".mcp.json"):
-                    self.assertEqual(json.loads(zipped.read(name))["mcpServers"]["linuxdo"]["command"], sys.executable)
+                    entry = json.loads(zipped.read(name))["mcpServers"]["linuxdo"]
+                    self.assertEqual(entry["command"], "python")
+                    self.assertEqual(entry["cwd"], "./")
+                    self.assertEqual(entry["args"][-1], "./scripts/launch_local.py")
+                self.assertEqual(json.loads(zipped.read("scripts/runtime.json"))["python"], sys.executable)
+                self.assertNotIn("scripts/Manage-LinuxDo.ps1", zipped.namelist())
+            archive = packager.package(Path(tmp) / "managed.zip", python_command=sys.executable,
+                                       manager_state=str(Path(tmp) / "manager"), tunnel_task="LinuxDo-test-only")
+            with ZipFile(archive) as zipped:
+                self.assertEqual(json.loads(zipped.read("scripts/runtime.json"))["tunnel_task"], "LinuxDo-test-only")
+                self.assertNotIn("tunnel-key.xml", " ".join(zipped.namelist()))
             with self.assertRaises(ValueError):
                 packager.package(Path(tmp) / "bad.zip", "https://evil.test/")
+            with self.assertRaises(ValueError):
+                packager.package(Path(tmp) / "bad-manager.zip", manager_state=tmp)
             archive = packager.package(Path(tmp) / "cloud-update.zip", "plugin_asdk_app_testonly",
                                        plugin_name="dev-testonly")
             with ZipFile(archive) as zipped:
                 for name in ("plugin.json", ".codex-plugin/plugin.json"):
                     self.assertEqual(json.loads(zipped.read(name))["name"], "dev-testonly")
+
+    def test_plugin_bootstrap_keeps_tunnel_output_off_mcp_stdio(self):
+        spec = importlib.util.spec_from_file_location("launcher", ROOT / "scripts/launch_local.py")
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "runtime.json").write_text(json.dumps({"python": sys.executable, "manager_state": tmp,
+                                                          "tunnel_task": "LinuxDo-test-only"}))
+            (root / "tunnel-key.xml").write_text("not-a-real-credential")
+            launcher.__file__ = str(root / "launch_local.py")
+            fake_os = SimpleNamespace(name="nt", execv=lambda *args: None)
+            fake_process = SimpleNamespace(run=lambda *args, **kwargs: None, call=lambda *args, **kwargs: 0, DEVNULL=-3,
+                                           CREATE_NO_WINDOW=0x08000000, SubprocessError=subprocess.SubprocessError)
+            with patch.object(launcher, "os", fake_os), patch.object(launcher, "subprocess", fake_process), \
+                 patch.object(fake_process, "run") as spawn, patch.object(fake_os, "execv") as execute, \
+                 patch.object(fake_process, "call", return_value=0) as serve:
+                self.assertEqual(launcher.main(), 0)
+                self.assertEqual(spawn.call_args.kwargs["stdin"], fake_process.DEVNULL)
+                self.assertEqual(spawn.call_args.kwargs["creationflags"], fake_process.CREATE_NO_WINDOW)
+                self.assertEqual(spawn.call_args.kwargs["stdout"], fake_process.DEVNULL)
+                self.assertEqual(spawn.call_args.kwargs["stderr"], fake_process.DEVNULL)
+                self.assertEqual(spawn.call_args.args[0], ["schtasks.exe", "/Run", "/TN", "LinuxDo-test-only"])
+                self.assertNotIn("not-a-real-credential", str(spawn.call_args))
+                execute.assert_not_called()
+                serve.assert_called_once_with([sys.executable, "-X", "utf8", "-m", "linuxdo_mcp.server"],
+                                              stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,
+                                              creationflags=fake_process.CREATE_NO_WINDOW)
 
 
 class ToolTests(unittest.IsolatedAsyncioTestCase):

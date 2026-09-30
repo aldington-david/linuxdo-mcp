@@ -25,6 +25,17 @@ try {
     $rejected = $false
     try { Check-TunnelOwner @{tunnel_id='tunnel_unrelated'} } catch { $rejected=$true }
     if (!$rejected) { throw 'Unrelated tunnel was accepted' }
+    # A healthy existing runtime returns before login checks/key decryption/connect.
+    $Settings.python = (Get-Command python).Source
+    $Settings.tunnel_client = (Get-Command pwsh).Source
+    function Ensure-TunnelId { }
+    function Tunnel-Status { return @{tunnel_id='tunnel_expected';process_running=$true;healthy=$true;ready=$true} }
+    function Check-Cookie { throw 'Healthy Tunnel reuse must not recheck the Cookie' }
+    Start-Tunnel
+    function Get-ScheduledTask { return [pscustomobject]@{Actions=@([pscustomobject]@{Arguments='unrelated'})} }
+    $rejected = $false
+    try { Install-CodexAutoStart } catch { $rejected=$true }
+    if (!$rejected -or (Test-Path (Join-Path $StateDir 'codex-startup'))) { throw 'Unrelated scheduled task was modified' }
     $AutoStartFile = Join-Path $testDir 'startup-test.lnk'
     $KeyFile = $xml
     Set-AutoStart $true
@@ -37,7 +48,7 @@ try {
     $rejected = $false
     try { Set-AutoStart $false } catch { $rejected=$true }
     if (!$rejected -or !(Test-Path -LiteralPath $AutoStartFile)) { throw 'Unrelated shortcut was modified' }
-    Write-Host 'PASS: parser, DPAPI, status, Windows command, ownership guards, isolated startup shortcut.'
+    Write-Host 'PASS: parser, DPAPI, status, Windows command, ownership guards, healthy Tunnel reuse, isolated startup shortcut.'
 } finally {
     # Only remove the exact newly created test directory, after checking its parent.
     $resolved = (Resolve-Path -LiteralPath $testDir).Path
