@@ -1,5 +1,7 @@
 # 使用文档
 
+日常提问、功能范围和可复制示例请看 [使用手册与示例提示词](USER-GUIDE.md)。本文保留安装、连接与手工维护步骤；Windows 默认推荐使用 [LinuxDo.cmd 管理入口](MANAGE-WINDOWS.md)。
+
 ## 1. 安装本机服务
 
 需要 Python 3.10+，建议 3.11+。命令在仓库根目录运行；插件包不包含 Python 运行环境。Windows 不必激活虚拟环境，因此也不必修改 PowerShell 执行策略。
@@ -28,7 +30,7 @@ macOS/Linux 可以 `python3 -m venv .venv` 后用 `.venv/bin/python` 代替本�
 & $pythonPath -m linuxdo_mcp.server --configure-cookie
 ```
 
-隐藏输入支持裸 token 或 `_t=...`，也支持浏览器展示的解码值；程序会保留已有转义并补齐 Cookie 的 URL 编码。输入不回显，请只粘贴一次后回车；写入后立即退出，不发网络请求。缓存默认在 `%USERPROFILE%\.cache\linuxdo-mcp\cookie.json`，不在仓库或 OneDrive 内。不要把 Cookie 放进聊天、GitHub、插件 ZIP 或共享配置。
+隐藏输入支持裸 token 或 `_t=...`，也支持浏览器展示的解码值；程序会保留已有转义并补齐 Cookie 的 URL 编码。输入不回显，请只粘贴一次后回车；程序会访问论坛身份接口，验证成功后才保存并退出，失败保留原凭证。缓存默认在 `%USERPROFILE%\.cache\linuxdo-mcp\cookie.json`，不在仓库或 OneDrive 内。不要把 Cookie 放进聊天、GitHub、插件 ZIP 或共享配置。
 
 此文件是明文凭证。Unix 上使用目录 700 / 文件 600；Windows 的实际访问权限取决于 NTFS ACL，`chmod(600)` 不等于设置 Windows ACL。需要限制为当前 Windows 用户时，可在缓存生成后执行：
 
@@ -142,7 +144,7 @@ ChatGPT 注册连接后，从插件页面 URL 复制技术 ID，官方示例以 
 & $pythonPath scripts/package_plugin.py --python $pythonPath
 ```
 
-安装带 Skill 的本地包使用个人 marketplace。若已有个人 marketplace，先备份，再追加条目，不能覆盖原文件。可以在 Codex 使用 `$plugin-creator`，或 ChatGPT Work 使用 `@plugin-creator`，让它把解压后的现有插件登记进个人 marketplace；提供插件目录，明确要求保留现有插件内容。只有 ChatGPT 注册连接的绑定包用于云端 Work；本机包里的 Python 路径必须在执行插件的电脑上存在。
+安装带 Skill 的本地包使用个人 marketplace。Windows 推荐由 LinuxDo.cmd 安装，它会备份配置并使用原生 `codex plugin add` 更新；不再依赖 Plugin Creator 辅助文件。手工维护已有个人 marketplace 时，只追加或修改本插件条目，不能覆盖原文件。只有 ChatGPT 注册连接的绑定包用于云端 Work；本机包里的 Python 路径必须在执行插件的电脑上存在。
 
 手动安装的新环境可以按以下结构放置（不要把它直接覆盖到已有配置）：
 
@@ -201,13 +203,13 @@ ChatGPT 注册连接后，从插件页面 URL 复制技术 ID，官方示例以 
 |---|---|
 | 未配置 Cookie / 401 | 本机运行 `--configure-cookie`；401 会清失效缓存 |
 | 403 | 可能是账号等级不足或站点策略；保留缓存，不连续重试 |
-| Cloudflare 拦截 | 内部最多尝试 3 次；停止连续调用，检查站点和网络，不保证指纹模拟必然通过 |
+| Cloudflare 拦截 | 停止连续调用，检查站点和网络；当前检测到验证页会直接报错，不保证指纹模拟必然通过 |
 | 429 | 已被限流，降低频率，稍后再试 |
 | MCP 可连接，ChatGPT 不可用 | 检查 Tunnel 就绪、workspace 关联、权限与客户端持续运行情况 |
 | HTTP 421 / Origin 403 | 核对是否通过正确 localhost 地址转发；不要关闭 Host/Origin 防护 |
 | `pip` 证书验证失败 | 使用可信的系统证书 / 组织 CA；更新虚拟环境内 pip，不用关闭 TLS 验证 |
 | 更新后看不到新工具 | 重新安装 Python 包、重启 MCP，在 ChatGPT 连接中 Refresh，并开新对话 |
 
-升级前先保存自己的修改：`git status` 确认工作区，再 `git pull --ff-only`；运行 `pip install .` 和测试。插件包需要重新生成和安装；更新已安装本机插件时，可用 `$plugin-creator` 的 cachebuster / 重装流程。更新服务器不会自动更新已打包的 Skill。
+升级前先保存自己的修改：`git status` 确认工作区，再 `git pull --ff-only`。Windows 用 LinuxDo.cmd 的安装/更新菜单处理运行环境和插件包；手工安装则需重新 `pip install .`、打包，并用 `codex plugin add linuxdo-mcp@personal` 安装。管理脚本会更新包版本标识，避免复用旧缓存。更新服务器不会自动更新已打包的 Skill。
 
-停用时禁用 Codex 插件并结束其会话；若运行了 Tunnel，则 Ctrl+C 结束它，关闭终端以释放当前环境变量；在 ChatGPT 或 Codex 禁用/移除插件。需要撤销登录时在 Linux.do 的账号会话管理中撤销独立会话，再删除实际缓存目录里的 `cookie.json`；不要删除其他浏览器会话。具体版本回滚见 [ROLLBACK.md](ROLLBACK.md)。
+停用时禁用 Codex 插件并结束其会话。Windows 管理脚本启动的后台 Tunnel 用 LinuxDo.cmd 菜单 6 停止；只有手动以前台 `tunnel-client run` 运行的进程才用 Ctrl+C。后续重新加载本地插件可能再次启动通道，永久撤销联动应按 Windows 管理文档处理对应任务。在 ChatGPT 或 Codex 禁用/移除插件不会自动撤销论坛会话；需要撤销登录时，在 Linux.do 的账号会话管理中撤销独立会话，不要删除其他浏览器会话。具体版本回滚见 [ROLLBACK.md](ROLLBACK.md)。

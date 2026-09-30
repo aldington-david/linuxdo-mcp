@@ -16,6 +16,8 @@ Cookie 保存在运行服务器的本机；查询及读取到的帖子内容会�
 
 ## 开始使用
 
+**日常怎么用：** 先看 [使用手册与 16 个示例提示词](docs/USER-GUIDE.md)，包含完整功能清单、搜索与读帖方法、长帖续读及凭证更新说明。
+
 **Linux VPS / Docker：** 在交互 SSH 终端运行 `bash linuxdo.sh setup`。提供带密钥校验的公网 HTTPS MCP、已有反代接入，以及可选 ChatGPT 私有 Tunnel；Cookie 用同一脚本隐藏粘贴更新。[VPS 部署、限制与安全说明](docs/VPS-DOCKER.md)
 
 Windows 用户直接双击仓库根目录的 **[LinuxDo.cmd](LinuxDo.cmd)**，选 **1 一键安装、授权并启动**；只用本机 Codex 时选 9。首次需要的登录和粘贴步骤由脚本逐步提示，日后用同一入口更新 Cookie、检查状态或停止通道。[完整操作说明](docs/MANAGE-WINDOWS.md)
