@@ -25,7 +25,11 @@ Tunnel key 用 Windows DPAPI 加密保存，只能由当前 Windows 用户在本
 | 8 关闭登录后自启 | 仅删除本脚本创建的启动快捷方式 |
 | 9 仅安装/更新本机 Codex | 只安装本地插件，不要求 ChatGPT Tunnel key |
 
-Codex 本机插件使用合规的程序名和插件内相对启动脚本，实际 Python 路径存在随包的 runtime.json 中。安装程序创建 `LinuxDo-Codex-Tunnel-<部署标识>` 按需任务：当前用户、普通权限，没有时间表和登录触发器。每次 Codex 加载插件时触发一次；未保存 Tunnel key 时只启动本地 MCP，不弹输入框。
+Codex 本机插件使用合规的程序名和插件内相对启动脚本，实际 Python 路径存在随包的 runtime.json 中。安装程序创建或更新同一个 `LinuxDo-Codex-Tunnel-<部署标识>` 按需任务：当前用户、普通权限，没有时间表和登录触发器。未保存 Tunnel key 时只启动本地 MCP，不弹输入框。
+
+0.6.2 起，插件加载时只向本机 `127.0.0.1` 的 `/readyz` 做一次最长 0.5 秒的检查；通道已就绪就直接继续，不启动 PowerShell，也不访问论坛。没有后台定时轮询。任务入口也做同样检查，兼容尚未重启、仍反复触发任务的旧客户端。
+
+真正需要启动时，任务通过 `pythonw.exe` 无控制台入口运行，管理 PowerShell 使用 `CREATE_NO_WINDOW`，标准输入/输出/错误都不连接终端。后台成功信息不弹窗，失败原因保存在已有的 last-error.json 中，菜单 3 可查看。手动打开 LinuxDo.cmd 时仍正常显示操作结果。
 
 按需任务调用管理脚本，使用互斥锁和官方 runtime 状态防止重复启动。Windows 任务负责后台进程的生命周期，避免 MCP 连接关闭时连带清理 Tunnel；Tunnel 启动失败也不会阻止本地 MCP 握手。正常启动约需数秒，网络较慢时更久。
 

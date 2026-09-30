@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # Offline checks: no real key, Cookie, plugin, or Tunnel changes.
 $ErrorActionPreference = 'Stop'
+# CDXML auto-import can replace function mocks; load it before defining any mocks.
+Import-Module ScheduledTasks -ErrorAction Stop
 $script = Join-Path (Split-Path $PSScriptRoot) 'Manage-LinuxDo.ps1'
 $tokens = $null; $errors = $null
 [void][Management.Automation.Language.Parser]::ParseFile($script,[ref]$tokens,[ref]$errors)
@@ -31,11 +33,20 @@ try {
     function Ensure-TunnelId { }
     function Tunnel-Status { return @{tunnel_id='tunnel_expected';process_running=$true;healthy=$true;ready=$true} }
     function Check-Cookie { throw 'Healthy Tunnel reuse must not recheck the Cookie' }
+    New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
     Start-Tunnel
     function Get-ScheduledTask { return [pscustomobject]@{Actions=@([pscustomobject]@{Arguments='unrelated'})} }
     $rejected = $false
     try { Install-CodexAutoStart } catch { $rejected=$true }
     if (!$rejected -or (Test-Path (Join-Path $StateDir 'codex-startup'))) { throw 'Unrelated scheduled task was modified' }
+    function Get-ScheduledTask { return $null }
+    function Register-ScheduledTask {
+        param($TaskName,$Action,$Principal,$Settings,$Description,[switch]$Force)
+        $global:LinuxDoTestRegisteredAction = $Action
+    }
+    $null = Install-CodexAutoStart
+    $testAction = $global:LinuxDoTestRegisteredAction
+    if ([IO.Path]::GetFileName($testAction.Execute) -ne 'pythonw.exe' -or !$testAction.Arguments.Contains('--start-tunnel')) { throw "Task does not use the windowless entry point: $($testAction.Execute)" }
     $AutoStartFile = Join-Path $testDir 'startup-test.lnk'
     $KeyFile = $xml
     Set-AutoStart $true
@@ -50,6 +61,7 @@ try {
     if (!$rejected -or !(Test-Path -LiteralPath $AutoStartFile)) { throw 'Unrelated shortcut was modified' }
     Write-Host 'PASS: parser, DPAPI, status, Windows command, ownership guards, healthy Tunnel reuse, isolated startup shortcut.'
 } finally {
+    Remove-Variable LinuxDoTestRegisteredAction -Scope Global -ErrorAction SilentlyContinue
     # Only remove the exact newly created test directory, after checking its parent.
     $resolved = (Resolve-Path -LiteralPath $testDir).Path
     if ((Split-Path $resolved) -ne ([IO.Path]::GetTempPath()).TrimEnd('\')) { throw 'Unexpected cleanup path' }

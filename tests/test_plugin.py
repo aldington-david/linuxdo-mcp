@@ -289,7 +289,7 @@ class CoreTests(unittest.TestCase):
             with patch.object(launcher, "os", fake_os), patch.object(launcher, "subprocess", fake_process), \
                  patch.object(fake_process, "run") as spawn, patch.object(fake_os, "execv") as execute, \
                  patch.object(fake_process, "call", return_value=0) as serve:
-                self.assertEqual(launcher.main(), 0)
+                self.assertEqual(launcher.main([]), 0)
                 self.assertEqual(spawn.call_args.kwargs["stdin"], fake_process.DEVNULL)
                 self.assertEqual(spawn.call_args.kwargs["creationflags"], fake_process.CREATE_NO_WINDOW)
                 self.assertEqual(spawn.call_args.kwargs["stdout"], fake_process.DEVNULL)
@@ -300,6 +300,56 @@ class CoreTests(unittest.TestCase):
                 serve.assert_called_once_with([sys.executable, "-X", "utf8", "-m", "linuxdo_mcp.server"],
                                               stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,
                                               creationflags=fake_process.CREATE_NO_WINDOW)
+                spawn.reset_mock()
+                with patch.object(launcher, "tunnel_ready", return_value=True):
+                    self.assertEqual(launcher.main([]), 0)
+                    spawn.assert_not_called()
+                    self.assertEqual(launcher.main(["--start-tunnel", tmp]), 0)
+                    spawn.assert_not_called()
+                with patch.object(launcher, "tunnel_ready", return_value=False):
+                    spawn.return_value.returncode = 0
+                    self.assertEqual(launcher.main(["--start-tunnel", tmp]), 0)
+                    self.assertEqual(spawn.call_args.args[0][0], "pwsh.exe")
+                    self.assertEqual(spawn.call_args.kwargs["creationflags"], fake_process.CREATE_NO_WINDOW)
+                    self.assertEqual(spawn.call_args.kwargs["stdout"], fake_process.DEVNULL)
+                    self.assertEqual(spawn.call_args.kwargs["stderr"], fake_process.DEVNULL)
+
+    def test_tunnel_health_probe_is_local_bounded_and_does_not_follow_redirects(self):
+        spec = importlib.util.spec_from_file_location("launcher", ROOT / "scripts/launch_local.py")
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(launcher.http.client, "HTTPConnection") as connect:
+            state = Path(tmp) / "last-tunnel-status.json"
+            self.assertFalse(launcher.tunnel_ready(tmp))
+            for url in ("https://example.com", "http://127.0.0.1.evil.test:8080", "http://user:secret@127.0.0.1:8080"):
+                state.write_text(json.dumps({"health_url": url}))
+                self.assertFalse(launcher.tunnel_ready(tmp))
+            connect.assert_not_called()
+            state.write_text(json.dumps({"health_url": "http://127.0.0.1:12345/healthz"}))
+            response = connect.return_value.getresponse.return_value
+            response.status, response.read.return_value = 200, b"ready\n"
+            self.assertTrue(launcher.tunnel_ready(tmp))
+            connect.assert_called_with("127.0.0.1", 12345, timeout=0.5)
+            connect.return_value.request.assert_called_with("GET", "/readyz")
+            connect.return_value.close.assert_called_once()
+            response.status = 302
+            self.assertFalse(launcher.tunnel_ready(tmp))
+
+    @unittest.skipUnless(os.name == "nt", "Windows console creation check")
+    def test_windowless_entry_creates_no_powershell_console(self):
+        pythonw = str(Path(sys.executable).with_name("pythonw.exe"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "launch_local.py").write_bytes((ROOT / "scripts/launch_local.py").read_bytes())
+            (root / "Manage-LinuxDo.ps1").write_text('''param($Action,[switch]$Unattended,$StateDir)
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class ConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
+Write-Host 'This test message must not open a console window.'
+@{console_window=[ConsoleProbe]::GetConsoleWindow().ToInt64()} | ConvertTo-Json | Set-Content (Join-Path $StateDir 'probe.json')
+''', encoding="utf-8")
+            subprocess.run([pythonw, "-X", "utf8", str(root / "launch_local.py"), "--start-tunnel", tmp],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=True, timeout=20)
+            self.assertEqual(json.loads((root / "probe.json").read_text(encoding="utf-8-sig"))["console_window"], 0)
 
 
 class ToolTests(unittest.IsolatedAsyncioTestCase):

@@ -20,7 +20,7 @@ Cookie 保存在运行服务器的本机；查询及读取到的帖子内容会�
 
 Windows 用户直接双击仓库根目录的 **[LinuxDo.cmd](LinuxDo.cmd)**，选 **1 一键安装、授权并启动**；只用本机 Codex 时选 9。首次需要的登录和粘贴步骤由脚本逐步提示，日后用同一入口更新 Cookie、检查状态或停止通道。[完整操作说明](docs/MANAGE-WINDOWS.md)
 
-本地 Codex 加载 stdio MCP 时自动启动进程，同时触发 Windows 按需任务，启动或复用已授权的 ChatGPT Tunnel。该任务没有定时或登录触发器；关闭一次工具连接不会关闭 Tunnel。另有可选的 Windows 登录自启，默认不启用。电脑关机或断网时，ChatGPT 无法调用本机服务。
+本地 Codex 加载 stdio MCP 时自动启动进程，并轻量检查本机 Tunnel。通道健康时不启动额外进程；未就绪才触发现有的 Windows 按需任务，通过无控制台入口恢复通道。该任务没有定时或登录触发器；关闭一次工具连接不会关闭 Tunnel。另有可选的 Windows 登录自启，默认不启用。电脑关机或断网时，ChatGPT 无法调用本机服务。
 
 以下是其他系统或手工维护方式：
 
@@ -85,7 +85,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.6.1`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
+本 fork 的 Python 包版本为 `0.6.2`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

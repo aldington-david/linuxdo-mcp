@@ -78,14 +78,19 @@ function Install-CodexAutoStart {
     $name = Get-CodexTaskName
     $directory = Join-Path $StateDir 'codex-startup'
     $scriptPath = Join-Path $directory 'Manage-LinuxDo.ps1'
-    $arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $scriptPath + '" -Action Start -Unattended -StateDir "' + $StateDir + '"'
+    $launcherPath = Join-Path $directory 'launch_local.py'
+    $pythonw = Join-Path (Split-Path $Settings.python) 'pythonw.exe'
+    $legacyArguments = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $scriptPath + '" -Action Start -Unattended -StateDir "' + $StateDir + '"'
+    $arguments = '-X utf8 "' + $launcherPath + '" --start-tunnel "' + $StateDir + '" --powershell "' + (Get-Process -Id $PID).Path + '"'
     $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-    if ($existing -and (@($existing.Actions).Count -ne 1 -or $existing.Actions[0].Arguments -ne $arguments)) {
+    if ($existing -and (@($existing.Actions).Count -ne 1 -or $existing.Actions[0].Arguments -notin @($arguments,$legacyArguments))) {
         throw '同名 Windows 任务不属于此部署，已停止，未覆盖。'
     }
+    if (!(Test-Path -LiteralPath $pythonw)) { throw '未找到此 Python 环境的 pythonw.exe，无法安装无窗口入口。' }
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     Copy-Item -LiteralPath $ManagerScript -Destination $scriptPath -Force
-    $action = New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument $arguments -WorkingDirectory $directory
+    Copy-Item -LiteralPath (Join-Path $Repo 'scripts\launch_local.py') -Destination $launcherPath -Force
+    $action = New-ScheduledTaskAction -Execute $pythonw -Argument $arguments -WorkingDirectory $directory
     $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
     # No trigger: Codex explicitly starts this task; no timer or logon action.
@@ -274,6 +279,7 @@ function Start-TunnelLocked {
     $existing = Tunnel-Status
     Check-TunnelOwner $existing
     if ($existing -and $existing.process_running -and $existing.healthy -and $existing.ready) {
+        $existing | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath (Join-Path $StateDir 'last-tunnel-status.json') -Encoding utf8
         Show-TunnelStatus $existing
         if (Test-Path -LiteralPath (Join-Path $StateDir 'last-error.json')) { Remove-Item -LiteralPath (Join-Path $StateDir 'last-error.json') }
         return
@@ -333,7 +339,7 @@ function Invoke-Action([string]$Selected) {
         'Install' { Install-Local }
         'Cookie' { Update-Cookie }
         'TunnelKey' { Configure-TunnelKey }
-        'Start' { Start-Tunnel }
+        'Start' { if ($Unattended) { Start-Tunnel *> $null } else { Start-Tunnel } }
         'Status' {
             if ($Settings.python) { $null = Check-Cookie } else { Write-Host '本地环境尚未安装。' }
             Show-TunnelStatus (Tunnel-Status)
@@ -361,6 +367,6 @@ try {
     }
 } catch {
     if (Test-Path -LiteralPath $StateDir) { [ordered]@{time=[DateTime]::UtcNow.ToString('o');action=$Action;error=$_.Exception.Message} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateDir 'last-error.json') -Encoding utf8 }
-    Write-Host $_.Exception.Message -ForegroundColor Red
+    if (!$Unattended -or $Action -ne 'Start') { Write-Host $_.Exception.Message -ForegroundColor Red }
     exit 1
 }
