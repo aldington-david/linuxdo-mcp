@@ -36,16 +36,20 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parent
     if args.start_tunnel:
+        from linuxdo_mcp.credential_alerts import show_pending
+        show_pending(args.start_tunnel, args.powershell, root / "Manage-LinuxDo.ps1")
         if tunnel_ready(args.start_tunnel):
             return 0
         # Invoked by pythonw.exe: neither this process nor its child allocates a console.
         try:
-            return subprocess.run(
+            result = subprocess.run(
                 [args.powershell, "-NoProfile", "-NonInteractive", "-File",
                  str(root / "Manage-LinuxDo.ps1"), "-Action", "Start", "-Unattended",
                  "-StateDir", str(args.start_tunnel)], stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW).returncode
+            show_pending(args.start_tunnel, args.powershell, root / "Manage-LinuxDo.ps1")
+            return result
         except OSError:
             (args.start_tunnel / "last-error.json").write_text(json.dumps({
                 "action": "Start", "error": "后台管理程序无法启动，请打开 LinuxDo.cmd 检查安装。"
@@ -65,6 +69,8 @@ def main(argv=None):
         except (OSError, subprocess.SubprocessError, KeyError):
             print("Linux.do Tunnel auto-start failed; open LinuxDo.cmd and check its status.", file=sys.stderr)
     command = [python, "-X", "utf8", "-m", "linuxdo_mcp.server"]
+    if state:
+        command += ["--manager-dir", state]
     if os.name == "nt":
         # Windows execv starts another PID; keeping the bootstrap alive preserves Codex's process ownership.
         return subprocess.call(command, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,

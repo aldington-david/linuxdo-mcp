@@ -85,7 +85,7 @@ $pythonPath = Join-Path $runtime 'Scripts\python.exe'
 
 ## 来源与规范
 
-本 fork 的 Python 包版本为 `0.6.2`，使用 MCP Python SDK `>=2.2.0,<3`。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
+本 fork 的 Python 包版本为 `0.6.3`，使用 MCP Python SDK `>=2.2.0,<3`。Windows 在确认 Cookie 或 Tunnel key 失效时主动弹出一次隐藏输入向导；健康状态与普通网络故障仍保持静默。没有实现公网管理 UI、OAuth、多账号托管或论坛写入操作。可选本机浏览器 Cookie 读取需额外安装 `.[browser]`；VPS 默认禁用此功能。
 
 - [OpenAI 插件打包规范](https://developers.openai.com/plugins/build/plugins)
 - [OpenAI MCP 工具开发规范](https://developers.openai.com/plugins/build/mcp-server)

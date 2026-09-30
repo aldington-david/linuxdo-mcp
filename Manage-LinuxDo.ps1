@@ -1,11 +1,12 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu','Setup','Install','Start','Status','Cookie','TunnelKey','Stop','EnableAutoStart','DisableAutoStart')]
+    [ValidateSet('Menu','Setup','Install','Start','Status','Cookie','TunnelKey','Stop','EnableAutoStart','DisableAutoStart','RepairCredential')]
     [string]$Action = 'Menu',
     [string]$PythonPath,
     [string]$TunnelClientPath,
     [string]$TunnelId,
+    [ValidateSet('Cookie','TunnelKey')][string]$Credential,
     [string]$StateDir = (Join-Path $HOME '.cache\linuxdo-mcp\manager'),
     [switch]$Unattended
 )
@@ -59,7 +60,7 @@ function Require-Python {
 }
 function Check-Cookie {
     Require-Python
-    $raw = & $Settings.python -X utf8 -m linuxdo_mcp.server --check-cookie --json
+    $raw = & $Settings.python -X utf8 -m linuxdo_mcp.server --check-cookie --json --manager-dir $StateDir
     $result = $raw | ConvertFrom-Json -AsHashtable
     Write-Host $result.message
     return $result
@@ -67,7 +68,7 @@ function Check-Cookie {
 function Update-Cookie {
     Require-Python
     if ($Unattended) { throw 'Cookie 需要更新，请双击 LinuxDo.cmd，选择“更新 Cookie”。' }
-    Run-Checked $Settings.python @('-X','utf8','-m','linuxdo_mcp.server','--configure-cookie') | Out-Host
+    Run-Checked $Settings.python @('-X','utf8','-m','linuxdo_mcp.server','--configure-cookie','--manager-dir',$StateDir) | Out-Host
 }
 function Get-CodexTaskName {
     $identity = [IO.Path]::GetFullPath($StateDir).ToLowerInvariant()
@@ -95,12 +96,13 @@ function Install-CodexAutoStart {
     $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
     # No trigger: Codex explicitly starts this task; no timer or logon action.
     Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Description 'Linux.do: start/reuse the existing Tunnel when Codex loads its local plugin.' -Force | Out-Null
+    @{task=$name} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateDir 'credential-notifications.json') -Encoding utf8
     return $name
 }
 function Install-Local {
     if (!(Get-Command codex -ErrorAction SilentlyContinue)) { throw '未找到 Codex 命令，请先安装并登录 Codex。' }
     $null = Get-Command python -ErrorAction Stop
-    $plugins = (& codex plugin list --json) | ConvertFrom-Json
+    $plugins = (& codex plugin list --marketplace personal --json) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw '无法读取 Codex 插件状态。' }
     $installed = @($plugins.installed | Where-Object pluginId -eq 'linuxdo-mcp@personal')
     $pluginDir = Join-Path $HOME 'plugins\linuxdo-mcp'
@@ -143,10 +145,10 @@ function Install-Local {
     if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
         Export-ScheduledTask -TaskName $taskName | Set-Content -LiteralPath (Join-Path $backup 'codex-tunnel-task.xml') -Encoding utf8
     }
-    $taskName = Install-CodexAutoStart
     Write-Host '正在安装或更新本机程序。'
     Run-Checked $Settings.python @('-m','pip','install','--quiet','--disable-pip-version-check',$Repo) | Out-Host
     Run-Checked $Settings.python @('-m','pip','check') | Out-Host
+    $taskName = Install-CodexAutoStart
     $archive = Join-Path $Repo 'dist\linuxdo-mcp-local.zip'
     Run-Checked $Settings.python @((Join-Path $Repo 'scripts\package_plugin.py'),'--python',$Settings.python,'--manager-state',$StateDir,'--tunnel-task',$taskName,'--output',$archive) | Out-Host
     Expand-Archive -LiteralPath $archive -DestinationPath $pluginDir -Force
@@ -202,7 +204,7 @@ function Ensure-TunnelId {
 }
 function Get-McpCommand {
     # The Tunnel shell parser consumes backslashes; Windows also accepts forward slashes.
-    return '"' + $Settings.python.Replace('\','/') + '" -m linuxdo_mcp.server'
+    return '"' + $Settings.python.Replace('\','/') + '" -m linuxdo_mcp.server --manager-dir "' + $StateDir.Replace('\','/') + '" --watch-tunnel'
 }
 function Write-Profile {
     Require-Python
@@ -235,6 +237,7 @@ function Configure-TunnelKey {
         Run-Checked $Settings.tunnel_client @('admin','--json','tunnels','get',$Settings.tunnel_id) | Out-Null
         $key | Export-Clixml -LiteralPath ($KeyFile + '.tmp')
         Move-Item -LiteralPath ($KeyFile + '.tmp') -Destination $KeyFile -Force
+        Run-Checked $Settings.python @('-m','linuxdo_mcp.credential_alerts','--manager-dir',$StateDir,'--clear','TunnelKey') | Out-Null
         Write-Host '授权检查通过，密钥已加密保存。以后启动不用再次粘贴。'
         if ($previous -and $previous.process_running) {
             Run-Checked $Settings.tunnel_client @('runtimes','stop',$Alias) | Out-Null
@@ -299,7 +302,16 @@ function Start-TunnelLocked {
         $connected = & $Settings.tunnel_client runtimes connect --alias $Alias --tunnel-id $Settings.tunnel_id --profile linuxdo-managed --profile-dir (Join-Path $StateDir 'profiles') --runtime-api-key env:CONTROL_PLANE_API_KEY --mcp-command $command --json
         $connectExit = $LASTEXITCODE
         $connected | Set-Content -LiteralPath (Join-Path $StateDir 'last-connect-result.json') -Encoding utf8
-        if ($connectExit -ne 0) { throw '通道启动未完成，诊断已保存在 manager/last-connect-result.json；无需因此更新 Cookie。' }
+        if ($connectExit -ne 0) {
+            # Only an actual OpenAI 401 confirms invalid credentials; ordinary 403/429/network failures do not.
+            try {
+                $response = Invoke-WebRequest -Uri ('https://api.openai.com/v1/tunnels/' + $Settings.tunnel_id) -Headers @{Authorization=('Bearer ' + $env:CONTROL_PLANE_API_KEY)} -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 15
+                if ($response.StatusCode -eq 401) {
+                    Run-Checked $Settings.python @('-m','linuxdo_mcp.credential_alerts','--manager-dir',$StateDir,'--request','TunnelKey') | Out-Null
+                }
+            } catch { }
+            throw '通道启动未完成，诊断已保存在 manager/last-connect-result.json；只有确认凭证失效才会弹出更新提示。'
+        }
         $status = Tunnel-Status
         for ($attempt = 0; $attempt -lt 5 -and $status -and $status.process_running -and !$status.ready; $attempt++) {
             Start-Sleep -Seconds 2
@@ -335,6 +347,30 @@ function Set-AutoStart([bool]$Enabled) {
 }
 function Invoke-Action([string]$Selected) {
     switch ($Selected) {
+        'RepairCredential' {
+            if ($Unattended -or !$Credential) { throw '凭证更新窗口需要明确的凭证类型和交互终端。' }
+            $Host.UI.RawUI.WindowTitle = 'Linux.do 凭证需要更新'
+            $label = if ($Credential -eq 'Cookie') { 'Linux.do 登录凭证（Cookie）' } else { 'OpenAI Tunnel 运行密钥' }
+            Write-Host ('检测到凭证已无法认证，需要更新：' + $label)
+            Write-Host '只在此窗口隐藏粘贴新值，不要发到聊天。关闭窗口后不会反复提醒，仍可从 LinuxDo.cmd 手动更新。'
+            $saved = $false
+            while ($true) {
+                try {
+                    if ($Credential -eq 'Cookie') { Update-Cookie } else { Configure-TunnelKey }
+                    Write-Host '更新已验证并保存。'
+                    $saved = $true
+                    break
+                } catch {
+                    Write-Host $_.Exception.Message -ForegroundColor Yellow
+                    if ((Read-Host '按回车重试，输入 Q 关闭') -match '^[qQ]$') { break }
+                }
+            }
+            if ($saved) {
+                try { if (Test-Path -LiteralPath $KeyFile) { Start-Tunnel } }
+                catch { Write-Host ('凭证已保存，通道暂时未就绪：' + $_.Exception.Message) -ForegroundColor Yellow }
+                $null = Read-Host '按回车关闭窗口'
+            }
+        }
         'Setup' { Install-Local; Start-Tunnel }
         'Install' { Install-Local }
         'Cookie' { Update-Cookie }

@@ -297,7 +297,7 @@ class CoreTests(unittest.TestCase):
                 self.assertEqual(spawn.call_args.args[0], ["schtasks.exe", "/Run", "/TN", "LinuxDo-test-only"])
                 self.assertNotIn("not-a-real-credential", str(spawn.call_args))
                 execute.assert_not_called()
-                serve.assert_called_once_with([sys.executable, "-X", "utf8", "-m", "linuxdo_mcp.server"],
+                serve.assert_called_once_with([sys.executable, "-X", "utf8", "-m", "linuxdo_mcp.server", "--manager-dir", tmp],
                                               stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,
                                               creationflags=fake_process.CREATE_NO_WINDOW)
                 spawn.reset_mock()
@@ -348,6 +348,7 @@ Write-Host 'This test message must not open a console window.'
 ''', encoding="utf-8")
             subprocess.run([pythonw, "-X", "utf8", str(root / "launch_local.py"), "--start-tunnel", tmp],
                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
                            check=True, timeout=20)
             self.assertEqual(json.loads((root / "probe.json").read_text(encoding="utf-8-sig"))["console_window"], 0)
 

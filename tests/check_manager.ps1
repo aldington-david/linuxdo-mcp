@@ -22,7 +22,8 @@ try {
     if (Test-Path -LiteralPath (Join-Path $testDir 'empty\settings.json')) { throw 'Status unexpectedly changed configuration' }
     . $script -Action Status -StateDir (Join-Path $testDir 'empty') | Out-Null
     $Settings.python = 'C:\path with spaces\python.exe'
-    if ((Get-McpCommand) -ne '"C:/path with spaces/python.exe" -m linuxdo_mcp.server') { throw 'Tunnel Python command is not portable' }
+    $command = Get-McpCommand
+    if (!$command.StartsWith('"C:/path with spaces/python.exe" -m linuxdo_mcp.server --manager-dir "') -or !$command.EndsWith('" --watch-tunnel') -or $command.Contains('\')) { throw 'Tunnel Python command is not portable' }
     $Settings.tunnel_id = 'tunnel_expected'
     $rejected = $false
     try { Check-TunnelOwner @{tunnel_id='tunnel_unrelated'} } catch { $rejected=$true }
