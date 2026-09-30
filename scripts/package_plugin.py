@@ -21,6 +21,7 @@ def package(output, app_id=None, python_command=None, plugin_name=None, manager_
     names = ["plugin.json", ".codex-plugin/plugin.json", "README.md",
              "skills/linuxdo-research/SKILL.md", "skills/linuxdo-research/agents/openai.yaml"]
     names += [p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "docs").glob("*.md"))]
+    names.append("docs/request-policy.example.json")
     files = {name: (ROOT / name).read_bytes() for name in names}
     if plugin_name:
         for name in ("plugin.json", ".codex-plugin/plugin.json"):

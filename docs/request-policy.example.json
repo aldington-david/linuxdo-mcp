@@ -1,0 +1,8 @@
+{
+  "min_seconds": 1.0,
+  "max_seconds": 1.8,
+  "search_min_seconds": 2.2,
+  "search_max_seconds": 3.2,
+  "rate_limit_cooldown_seconds": 60.0,
+  "challenge_cooldown_seconds": 120.0
+}

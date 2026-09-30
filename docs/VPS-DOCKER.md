@@ -1,4 +1,4 @@
-# Linux VPS / Docker 部署（0.6.0）
+# Linux VPS / Docker 部署（服务器 0.6.4）
 
 这是独立的 VPS 部署入口；不会自动切换电脑上已安装的 Windows 版本。保留 curl_cffi 的 Chrome TLS 模拟、原有 13 个只读工具和 Cookie 轮换缓存。
 
@@ -14,6 +14,8 @@
 | Cookie 有效期 | 网站可随时撤销会话；本地默认 30 天缓存上限不是网站承诺。使用中接收轮换值会保存，真正失效后仍需重新登录取值。 |
 | 自动检查 | 部署、脚本启动/状态检查会验证；持续使用中，距上次验证超过 5 分钟后的下一次请求检查身份。空闲不定时访问论坛，Docker 健康检查只检查进程。 |
 | 防滥用范围 | 未授权请求不会到达论坛；密钥、限流和资源上限不能代替供应商的防火墙或抗 DDoS 服务。VPS root / Docker 管理员仍可读取数据卷。 |
+
+服务器 0.6.4 起，HTTP 和 Tunnel 的实际论坛请求还共享随机间隔与冷却：普通请求 1.0–1.8 秒，搜索之间 2.2–3.2 秒。这与上表的公网 MCP 入口限流分开。配置文件位于共享数据卷的 `/data/request-policy.json`，详见 [请求节奏说明](REQUEST-PACING.md)。
 
 **ChatGPT 不能直接填写这里生成的固定 API key。** 受保护的公网 ChatGPT MCP 需要 OAuth；本版不自建 OAuth 登录系统。Codex 等支持 Bearer header 的客户端可直接连接 HTTPS，ChatGPT 则通过可选 OpenAI Secure MCP Tunnel 接入。[OpenAI 授权规范](https://developers.openai.com/plugins/build/auth)、[Codex MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)、[私有 Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
 

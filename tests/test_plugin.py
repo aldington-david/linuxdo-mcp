@@ -156,6 +156,7 @@ class CoreTests(unittest.TestCase):
 
     def test_cookie_rotation_and_request_boundary(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
+             patch.object(server.pacing, "before_request"), patch.object(server.pacing, "cool_down", return_value=60), \
              patch.dict(os.environ, {"LINUXDO_COOKIE": "_t=bootstrap", "LINUXDO_READ_BROWSER": "0"}), \
              patch.object(server.creq, "get") as get:
             cookies._write_cache("_t=bootstrap", validated_at=time.time())
@@ -199,6 +200,7 @@ class CoreTests(unittest.TestCase):
 
     def test_validated_cookie_update_and_automatic_login_check(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(cookies, "CACHE", Path(tmp) / "cookie.json"), \
+             patch.object(server.pacing, "before_request"), patch.object(server.pacing, "cool_down", return_value=60), \
              patch.dict(os.environ, {"LINUXDO_COOKIE": "", "LINUXDO_READ_BROWSER": "0"}), \
              patch.object(server.creq, "get") as get:
             cookies._write_cache("_t=old")
@@ -237,6 +239,7 @@ class CoreTests(unittest.TestCase):
                 with ZipFile(archive) as zipped:
                     names = zipped.namelist()
                     self.assertIn("skills/linuxdo-research/SKILL.md", names)
+                    self.assertIn("docs/request-policy.example.json", names)
                     self.assertNotIn("cookie.json", names)
                     self.assertNotIn(".env", names)
                     self.assertEqual("mcp.json" in names, app_id is None)
